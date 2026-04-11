@@ -1,89 +1,110 @@
-# AriaOS
+# AriaOS - AI Operating System for Agents
 
-AriaOS is an AI operating system for agents.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.x-blue?style=for-the-badge&logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/VM-Debian%2012%20%2F%20XFCE-red?style=for-the-badge&logo=debian" alt="Debian VM">
+  <img src="https://img.shields.io/badge/AI-OpenAI%20GPT--5.4-green?style=for-the-badge&logo=openai" alt="OpenAI">
+</p>
 
-The project is built around a simple idea: instead of running an agent as a tab inside a generic app, give it its own operating environment. AriaOS runs inside a dedicated virtual machine, keeps the host outside the working perimeter, and exposes a workspace designed for agent-driven execution, memory, tools, and direct operator control.
+Un système d'exploitation orienté agents qui s'exécute dans une machine virtuelle dédiée, avec Terminal Aria, mémoire locale, fichiers locaux, et une configuration locale par clé OpenAI.
 
-## Direction
+## 🚀 Fonctionnalités
 
-This repository is the new local-first AriaOS line.
+- 🤖 **OS orienté agents** - Un environnement dédié pour exécuter et piloter un agent dans une VM
+- 💻 **Terminal Aria** - Une interface de travail centrée sur les tâches agentiques
+- 🔐 **BYOK OpenAI** - L'utilisateur fournit sa clé OpenAI au premier démarrage
+- 🗂️ **Workspace local** - Fichiers, historique et mémoire restent dans la VM
+- 🧠 **Mémoire long terme** - Préférences, playbooks et résumés utiles conservés localement
+- 🖥️ **Desktop intégré** - Browser, files et shell tournent dans la même machine
 
-The goal is to make AriaOS:
+## ⚡ Installation Rapide
 
-- open source
-- easier to understand
-- easier to install and package
-- independent from the old hosted account stack
-- usable with a user-provided OpenAI API key stored locally on the VM
+```bash
+# Cloner le repo
+git clone git@github.com:jeremie225ci/ariaos.git
+cd ariaos
 
-The current migration direction is:
+# Lancer le shell GTK en local
+cd app/aria-shell-gtk
+PYTHONPATH=src python3 -m aria_shell_gtk
+```
 
-- no mandatory account creation in onboarding
-- no required control plane for the main VM experience
-- bring-your-own OpenAI key at first launch
-- local runtime and local workspace as the default product path
+Pour le vrai produit, le chemin visé reste la VM AriaOS préconfigurée. Le dépôt public contient la base du shell, les fichiers guest VM et les outils de release.
 
-## What AriaOS Is
+## 📖 Utilisation
 
-AriaOS is not a generic Linux distribution. It is a focused agent workspace packaged as a VM.
+### Premier démarrage
 
-Core ideas:
+1. Démarrer la VM AriaOS
+2. Ouvrir AriaOS / Aria Home
+3. Passer l'onboarding
+4. Entrer une clé OpenAI
+5. Lancer Terminal Aria
 
-- dedicated VM workspace for the agent
-- desktop shell and terminal entrypoint designed around the agent workflow
-- local long-term memory file and task history
-- browser, files, and desktop tools available inside the same VM
-- export and release tooling for shipping the VM image
+### Flux principal
 
-## Current Product Shape
+- **Aria Home** - Point d'entrée principal
+- **Terminal Aria** - Exécution des tâches
+- **OpenAI Key** - Configuration locale de la clé et du modèle
+- **Files** - Accès au workspace local
+- **Browser** - Navigation depuis la VM
 
-In the new local-first flow, the user:
+### État actuel
 
-1. boots the VM
-2. goes through onboarding
-3. enters an OpenAI API key once
-4. stores that key locally on the VM
-5. launches Terminal Aria and works from inside the machine
+Le nouveau flux public est **local-first** :
 
-This removes the old account-first experience and makes the product easier to adopt, inspect, and redistribute.
+- pas de création de compte obligatoire
+- pas de dépendance obligatoire à un serveur distant pour le premier usage
+- clé OpenAI stockée localement dans la VM
+- runtime local comme chemin principal
 
-## Repository Layout
+## 🔧 Configuration
 
-- `app/aria-shell-gtk/`
-  GTK shell client, onboarding flow, home screen, and terminal experience.
-- `vm/guest/`
-  Guest launchers, desktop entries, first-boot assets, and VM-facing scripts.
-- `vm/release/`
-  Release and export helpers for producing VM artifacts.
-- `docs/`
-  Project documentation for the new public AriaOS line.
-- `assets/`
-  Shared visuals and repository assets.
+Les principaux fichiers locaux utilisés par AriaOS sont :
 
-## Migration Status
+- `~/.config/ariaos/local_agent_secrets.json` - clé OpenAI locale
+- `~/.config/ariaos/runtime_config.json` - configuration runtime
+- `~/.local/state/ariaos/onboarding_state.json` - état de l'onboarding
+- `~/.ariaos/data/` - historique local et données
 
-This repository is still under active cleanup and migration from the older private AriaOS codebase.
+## 🏗️ Structure du Projet
 
-Already in progress:
+```text
+ariaos/
+├── README.md
+├── app/
+│   └── aria-shell-gtk/          # Shell GTK, onboarding, home, terminal
+├── vm/
+│   ├── guest/                   # Launchers, desktop files, firstboot, greeter
+│   └── release/                 # Outils d'export et de release VM
+├── docs/
+│   ├── INSTALL_VM.md            # Flux de setup VM
+│   └── LOCAL_FIRST_ARCHITECTURE.md
+└── assets/                      # Assets partagés
+```
 
-- split into a dedicated public-facing repository
-- local-only onboarding path centered on the OpenAI key
-- VM launcher gating based on local key setup instead of remote account state
+## 🛡️ Sécurité
 
-Still being cleaned:
+AriaOS isole l'expérience agentique dans une VM dédiée :
 
-- old hosted/control-plane remnants in unused modules
-- naming and docs across the tree
-- packaging and release documentation
-- final public-ready structure for the VM distribution
+- 🧱 **Périmètre séparé** - l'agent travaille dans la VM, pas sur l'hôte directement
+- 🔐 **Clé locale** - la clé OpenAI reste stockée localement
+- 🗃️ **Mémoire visible** - préférences et résumés utiles restent inspectables
+- 🧭 **Flux simplifié** - moins de dépendances distantes dans le chemin principal
 
-## Vision
+## 📋 Prérequis
 
-The long-term goal is to make AriaOS a practical operating environment for autonomous and semi-autonomous agents:
+- Python 3
+- Linux / VM Debian-based
+- GTK4 + libadwaita pour le shell GTK
+- clé API OpenAI
 
-- inspectable
-- reproducible
-- shareable
-- usable by builders without a private backend dependency
+Paquets généralement nécessaires :
 
-This repository is the base for that version of AriaOS.
+- `python3-gi`
+- `gir1.2-gtk-4.0`
+- `gir1.2-adw-1`
+
+## 📄 Licence
+
+Licence publique pas encore finalisée.
