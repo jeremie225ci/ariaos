@@ -26,9 +26,6 @@ try:
 except Exception:  # pragma: no cover - packaged client remaps this module
     from .views.cards import show_key_dialog
 
-if TYPE_CHECKING:
-    from .services.channel import TaskChannel
-
 
 REQUESTED_VIEW_PATH = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))) / "ariaos" / "requested_start_view"
 ONBOARDING_STATE_PATH = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))) / "ariaos" / "onboarding_state.json"
@@ -214,9 +211,6 @@ class AriaShellApp(Adw.Application):
         Gtk.Application.do_shutdown(self)
 
     def _build_bridge(self, state: RuntimeState):
-        if state.remote_url.strip():
-            from .services.channel import TaskChannel
-            return TaskChannel(state)
         return LocalLoop(state)
 
     def _ensure_terminal_view(self, state: RuntimeState) -> ConsoleView:
