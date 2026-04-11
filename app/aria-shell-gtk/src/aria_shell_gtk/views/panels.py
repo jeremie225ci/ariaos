@@ -177,7 +177,7 @@ def show_model_dialog(
     title.set_halign(Gtk.Align.START)
     inner.append(title)
 
-    subtitle = Gtk.Label(label="Pick the OpenAI model used by Terminal Aria and remote tasks started from this VM.")
+    subtitle = Gtk.Label(label="Pick the OpenAI model used by Terminal Aria in this local VM.")
     subtitle.add_css_class("overlay-text")
     subtitle.set_wrap(True)
     subtitle.set_xalign(0)

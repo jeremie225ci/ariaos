@@ -573,8 +573,8 @@ DEFAULT_CONFIG = {
         or DEFAULT_VOICE_LANGUAGE
     ).strip().lower() or DEFAULT_VOICE_LANGUAGE,
     "vision_mode": "local",
-    "vision_local_start_cmd": "bash -lc 'curl -fsS http://192.168.0.242:8000/health >/dev/null 2>&1 || true'",
-    "vision_local_stop_cmd": "bash -lc 'true'",
+    "vision_local_start_cmd": "",
+    "vision_local_stop_cmd": "",
     "vision_cloud_parse_url": "",
     "max_transcript_messages": 20,
 }
@@ -2803,12 +2803,9 @@ class RuntimeStore:
     def restart_local_backend() -> bool:
         if str(load_runtime_config().get("remote_url") or "").strip():
             return True
-        ariaos_dir = Path(os.environ.get("ARIAOS_DIR") or str(Path.home() / "ariaos"))
+        ariaos_dir = Path(os.environ.get("ARIAOS_DIR") or str(Path(__file__).resolve().parents[5]))
         if not ariaos_dir.exists():
             return False
-
-        if RuntimeStore.backend_ws_reachable():
-            return True
 
         STATE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -2827,7 +2824,12 @@ class RuntimeStore:
                 pass
 
         env = dict(os.environ)
-        env["PYTHONPATH"] = str(ariaos_dir)
+        existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+        env["PYTHONPATH"] = (
+            f"{ariaos_dir}:{existing_pythonpath}"
+            if existing_pythonpath
+            else str(ariaos_dir)
+        )
         with BACKEND_LOG_PATH.open("a", encoding="utf-8") as log_file:
             proc = subprocess.Popen(
                 ["python3", "-u", "backend/server.py"],
