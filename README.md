@@ -6,105 +6,105 @@
   <img src="https://img.shields.io/badge/AI-OpenAI%20GPT--5.4-green?style=for-the-badge&logo=openai" alt="OpenAI">
 </p>
 
-Un système d'exploitation orienté agents qui s'exécute dans une machine virtuelle dédiée, avec Terminal Aria, mémoire locale, fichiers locaux, et une configuration locale par clé OpenAI.
+An agent-focused operating system that runs inside a dedicated virtual machine, with Terminal Aria, local memory, local files, and local OpenAI key setup.
 
-## 🚀 Fonctionnalités
+## 🚀 Features
 
-- 🤖 **OS orienté agents** - Un environnement dédié pour exécuter et piloter un agent dans une VM
-- 💻 **Terminal Aria** - Une interface de travail centrée sur les tâches agentiques
-- 🔐 **BYOK OpenAI** - L'utilisateur fournit sa clé OpenAI au premier démarrage
-- 🗂️ **Workspace local** - Fichiers, historique et mémoire restent dans la VM
-- 🧠 **Mémoire long terme** - Préférences, playbooks et résumés utiles conservés localement
-- 🖥️ **Desktop intégré** - Browser, files et shell tournent dans la même machine
+- 🤖 **Agent-focused OS** - A dedicated environment for running and operating an agent inside a VM
+- 💻 **Terminal Aria** - A work surface centered on agent-driven execution
+- 🔐 **OpenAI BYOK** - Users provide their own OpenAI API key on first launch
+- 🗂️ **Local Workspace** - Files, history, and memory stay inside the VM
+- 🧠 **Long-term Memory** - Preferences, playbooks, and useful summaries are stored locally
+- 🖥️ **Integrated Desktop** - Browser, files, and shell run inside the same machine
 
-## ⚡ Installation Rapide
+## ⚡ Quick Start
 
 ```bash
-# Cloner le repo
+# Clone the repository
 git clone git@github.com:jeremie225ci/ariaos.git
 cd ariaos
 
-# Lancer le shell GTK en local
+# Run the GTK shell locally
 cd app/aria-shell-gtk
 PYTHONPATH=src python3 -m aria_shell_gtk
 ```
 
-Pour le vrai produit, le chemin visé reste la VM AriaOS préconfigurée. Le dépôt public contient la base du shell, les fichiers guest VM et les outils de release.
+For the actual product experience, the intended path remains the preconfigured AriaOS VM. This public repository contains the shell codebase, VM guest files, and VM release tooling.
 
-## 📖 Utilisation
+## 📖 Usage
 
-### Premier démarrage
+### First Run
 
-1. Démarrer la VM AriaOS
-2. Ouvrir AriaOS / Aria Home
-3. Passer l'onboarding
-4. Entrer une clé OpenAI
-5. Lancer Terminal Aria
+1. Boot the AriaOS VM
+2. Open AriaOS / Aria Home
+3. Complete onboarding
+4. Enter an OpenAI API key
+5. Launch Terminal Aria
 
-### Flux principal
+### Main Flow
 
-- **Aria Home** - Point d'entrée principal
-- **Terminal Aria** - Exécution des tâches
-- **OpenAI Key** - Configuration locale de la clé et du modèle
-- **Files** - Accès au workspace local
-- **Browser** - Navigation depuis la VM
+- **Aria Home** - Main entry point
+- **Terminal Aria** - Task execution interface
+- **OpenAI Key** - Local API key and model setup
+- **Files** - Access to the local workspace
+- **Browser** - Navigation inside the VM
 
-### État actuel
+### Current Direction
 
-Le nouveau flux public est **local-first** :
+The public AriaOS flow is now **local-first**:
 
-- pas de création de compte obligatoire
-- pas de dépendance obligatoire à un serveur distant pour le premier usage
-- clé OpenAI stockée localement dans la VM
-- runtime local comme chemin principal
+- no mandatory account creation
+- no mandatory remote server dependency for first use
+- OpenAI API key stored locally inside the VM
+- local runtime as the main execution path
 
 ## 🔧 Configuration
 
-Les principaux fichiers locaux utilisés par AriaOS sont :
+Main local files used by AriaOS:
 
-- `~/.config/ariaos/local_agent_secrets.json` - clé OpenAI locale
-- `~/.config/ariaos/runtime_config.json` - configuration runtime
-- `~/.local/state/ariaos/onboarding_state.json` - état de l'onboarding
-- `~/.ariaos/data/` - historique local et données
+- `~/.config/ariaos/local_agent_secrets.json` - local OpenAI key and secrets
+- `~/.config/ariaos/runtime_config.json` - runtime configuration
+- `~/.local/state/ariaos/onboarding_state.json` - onboarding state
+- `~/.ariaos/data/` - local history and data
 
-## 🏗️ Structure du Projet
+## 🏗️ Project Structure
 
 ```text
 ariaos/
 ├── README.md
 ├── app/
-│   └── aria-shell-gtk/          # Shell GTK, onboarding, home, terminal
+│   └── aria-shell-gtk/          # GTK shell, onboarding, home, terminal
 ├── vm/
 │   ├── guest/                   # Launchers, desktop files, firstboot, greeter
-│   └── release/                 # Outils d'export et de release VM
+│   └── release/                 # VM export and release tooling
 ├── docs/
-│   ├── INSTALL_VM.md            # Flux de setup VM
+│   ├── INSTALL_VM.md            # VM setup flow
 │   └── LOCAL_FIRST_ARCHITECTURE.md
-└── assets/                      # Assets partagés
+└── assets/                      # Shared repository assets
 ```
 
-## 🛡️ Sécurité
+## 🛡️ Security
 
-AriaOS isole l'expérience agentique dans une VM dédiée :
+AriaOS isolates the agent experience inside a dedicated VM:
 
-- 🧱 **Périmètre séparé** - l'agent travaille dans la VM, pas sur l'hôte directement
-- 🔐 **Clé locale** - la clé OpenAI reste stockée localement
-- 🗃️ **Mémoire visible** - préférences et résumés utiles restent inspectables
-- 🧭 **Flux simplifié** - moins de dépendances distantes dans le chemin principal
+- 🧱 **Separate perimeter** - The agent works inside the VM, not directly on the host
+- 🔐 **Local key storage** - The OpenAI key stays stored locally
+- 🗃️ **Visible memory** - Preferences and useful summaries remain inspectable
+- 🧭 **Simplified flow** - Fewer remote dependencies in the main product path
 
-## 📋 Prérequis
+## 📋 Requirements
 
 - Python 3
-- Linux / VM Debian-based
-- GTK4 + libadwaita pour le shell GTK
-- clé API OpenAI
+- Linux / Debian-based VM
+- GTK4 + libadwaita for the GTK shell
+- OpenAI API key
 
-Paquets généralement nécessaires :
+Common packages:
 
 - `python3-gi`
 - `gir1.2-gtk-4.0`
 - `gir1.2-adw-1`
 
-## 📄 Licence
+## 📄 License
 
-Licence publique pas encore finalisée.
+Public license not finalized yet.
