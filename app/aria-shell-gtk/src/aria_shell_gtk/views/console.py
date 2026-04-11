@@ -26,7 +26,7 @@ from ..services.loop import LocalLoop
 from ..services.history import HistoryService, SessionMessage, SessionSummary
 from ..services.core import RuntimeState, RuntimeStore, SUPPORTED_OPENAI_VOICE_NAMES, SUPPORTED_VOICE_LANGUAGES
 from ..services.voice_client import VoiceClient
-from .panels import show_access_dialog, show_model_dialog, show_key_dialog
+from .panels import show_model_dialog, show_key_dialog
 from .voice_overlay import VoiceOverlay
 
 DEBUG_PREFIXES = (
