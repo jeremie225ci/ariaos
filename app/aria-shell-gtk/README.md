@@ -1,40 +1,47 @@
 # Aria Shell GTK
 
-Experimental GTK4/libadwaita shell for AriaOS.
+GTK4/libadwaita shell for the new local-first AriaOS line.
 
-This project is intentionally isolated from the current Tkinter UI so the GTK redesign can progress without breaking the stable VM flow.
+This shell is now the active UI direction for the public AriaOS repository. It provides the onboarding flow, the home screen, and the Terminal Aria experience used by the VM launcher in this repository.
 
-## Scope in this branch
-- Intro screen
-- Home screen
-- Terminal placeholder with launch-back-to-legacy fallback
-- Shared theme tokens
-- Reading the same local Aria session and secret files used by the current product shell
+## Current scope
 
-## Not migrated yet
-- Terminal websocket UI
-- Session history UI
-- Image attachment UI
-- Control Tower auth/billing dialogs
-- Root password/session privilege flow
+- local-first onboarding
+- local OpenAI key setup
+- Aria Home
+- Terminal Aria session history
+- image attachment support
+- local runtime connection handling
+- long-term memory integration
+
+## Local-first assumptions
+
+- no mandatory hosted account flow
+- no required Control Tower dependency in the main VM path
+- OpenAI API key is provided by the user and stored locally on the VM
+- terminal execution is driven by the local runtime
 
 ## Dependencies
+
 Debian/Ubuntu packages typically needed:
+
 - `python3-gi`
 - `gir1.2-gtk-4.0`
 - `gir1.2-adw-1`
 
 Optional:
+
 - `libgtk-4-media-gstreamer`
 
 ## Run
+
 ```bash
-cd services/aria-shell-gtk
+cd app/aria-shell-gtk
 PYTHONPATH=src python3 -m aria_shell_gtk
 ```
 
-## Design goals
-- Keep Linux underneath
-- Replace the visible Aria layer only
-- Preserve backend contracts while swapping UI technology
-- Maintain a clean rollback path to the Tkinter shell
+## Notes
+
+- the shell reads local AriaOS state from the VM user profile
+- the launcher used by the VM guest files lives in `vm/guest/bin/run_aria_shell_gtk.sh`
+- some legacy hosted modules still exist in the tree and are being removed as the migration continues

@@ -2272,19 +2272,31 @@ class RuntimeStore:
 
     @staticmethod
     def open_account_signin(base_url: str | None = None) -> None:
-        hub_url = _canonical_hub_url(base_url or HUB_URL)
-        next_path = quote("/login?next=/connect-vm", safe="")
-        RuntimeStore._open_url(f"{hub_url}/logout-vm?next={next_path}")
+        del base_url
+        RuntimeStore.open_browser()
 
     @staticmethod
     def open_google_connect(base_url: str | None = None) -> None:
-        hub_url = _canonical_hub_url(base_url or HUB_URL)
-        next_path = quote("/connect-vm", safe="")
-        RuntimeStore._open_url(f"{hub_url}/login?next={next_path}&provider=google")
+        del base_url
+        RuntimeStore.open_browser()
 
     @staticmethod
     def open_browser() -> None:
-        RuntimeStore._open_url("about:blank")
+        env = dict(os.environ)
+        for command in (
+            ["google-chrome", "about:blank"],
+            ["chromium", "about:blank"],
+            ["chromium-browser", "about:blank"],
+            ["firefox", "about:blank"],
+        ):
+            try:
+                subprocess.Popen(command, env=env, start_new_session=True)
+                return True
+            except FileNotFoundError:
+                continue
+            except Exception:
+                continue
+        return RuntimeStore._open_url("about:blank")
 
     @staticmethod
     def open_files() -> None:
@@ -2519,56 +2531,8 @@ class RuntimeStore:
 
     @staticmethod
     def apply_account_link_payload(payload: dict[str, Any]) -> tuple[bool, str]:
-        auth_token = str(
-            payload.get("auth_token")
-            or payload.get(LEGACY_AUTH_KEY)
-            or payload.get("session_cookie")
-            or ""
-        ).strip()
-        hub_url = str(
-            payload.get("hub_url")
-            or payload.get(LEGACY_HUB_URL_KEY)
-            or payload.get("control_tower_url")
-            or HUB_URL
-        ).rstrip("/")
-        account_email = str(payload.get("account_email") or "").strip()
-        account_uid = str(payload.get("account_uid") or "").strip()
-        plan_status = str(payload.get("plan_status") or "trialing").strip()
-        plan_name = str(payload.get("plan_name") or "Free").strip()
-        plan_key = str(payload.get("plan_key") or "free").strip()
-        ticket_token = str(payload.get("ticket_token") or "").strip()
-
-        if not auth_token:
-            return False, "Missing session cookie."
-
-        RuntimeStore.save_account_session(
-            {
-                "account_email": account_email,
-                "account_uid": account_uid,
-                "plan_status": plan_status,
-                "plan_key": plan_key,
-                "hub_url": hub_url,
-                "auth_token": auth_token,
-                "plan_name": plan_name,
-                "activation_notice_pending": "",
-                "activation_notice_seen_for": "",
-                "prompts_remaining": payload.get("prompts_remaining"),
-            }
-        )
-        ok, message = RuntimeStore.refresh_access(hub_url)
-        if ticket_token and hub_url:
-            try:
-                _http_json(
-                    f"{hub_url.rstrip('/')}/api/vm-link-ticket/{urllib.parse.quote(ticket_token, safe='')}/ack",
-                    method="POST",
-                    payload={
-                        "status": "connected" if ok else "failed",
-                        "message": message,
-                    },
-                )
-            except Exception:
-                pass
-        return ok, message
+        del payload
+        return False, "Account linking is disabled in this local-first AriaOS build."
 
     @staticmethod
     def save_account_session(payload: dict[str, Any]) -> None:
@@ -2578,13 +2542,13 @@ class RuntimeStore:
     def clear_account_session() -> None:
         _save_session_json(
             {
-                "account_email": "",
+                "account_email": "Local Community",
                 "account_uid": "",
-                "plan_status": "trialing",
-                "plan_key": "free",
-                "hub_url": PUBLIC_HUB_URL,
+                "plan_status": "active",
+                "plan_key": "community",
+                "hub_url": "",
                 "auth_token": "",
-                "plan_name": "AriaOS",
+                "plan_name": "Community",
                 "activation_notice_pending": "",
                 "activation_notice_seen_for": "",
                 "prompts_remaining": None,
@@ -2599,12 +2563,10 @@ class RuntimeStore:
 
     @staticmethod
     def logout_account(open_browser: bool = True) -> tuple[bool, str]:
-        session = _load_session_json()
-        hub_url = _canonical_hub_url(session.get("hub_url") or HUB_URL)
         RuntimeStore.clear_account_session()
         if open_browser:
-            RuntimeStore.open_account_signin(hub_url)
-        return True, "Account session cleared. Sign in with another account to continue."
+            RuntimeStore.open_browser()
+        return True, "Local session state cleared."
 
     @staticmethod
     def refresh_access(base_url: str | None = None) -> tuple[bool, str]:
@@ -2918,54 +2880,4 @@ class RuntimeStore:
 
     @staticmethod
     def ensure_local_link_server() -> None:
-        global _LINK_SERVER_STARTED
-        if _LINK_SERVER_STARTED:
-            return
-
-        class Handler(BaseHTTPRequestHandler):
-            def _send(self, status: int, payload: dict[str, Any]) -> None:
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(status)
-                origin = self.headers.get("Origin", "*")
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.send_header("Access-Control-Allow-Private-Network", "true")
-                self.send_header("Vary", "Origin, Access-Control-Request-Private-Network")
-                self.end_headers()
-                self.wfile.write(body)
-
-            def do_OPTIONS(self):  # noqa: N802
-                self._send(200, {"ok": True})
-
-            def do_POST(self):  # noqa: N802
-                if urlparse(self.path).path != "/connect":
-                    self._send(404, {"ok": False, "error": "Not found"})
-                    return
-                try:
-                    length = int(self.headers.get("Content-Length", "0"))
-                except ValueError:
-                    length = 0
-                try:
-                    payload = json.loads(self.rfile.read(length).decode("utf-8") if length else "{}")
-                except Exception:
-                    self._send(400, {"ok": False, "error": "Invalid JSON payload."})
-                    return
-
-                ok, message = RuntimeStore.apply_account_link_payload(payload)
-                self._send(200 if ok else 400, {"ok": ok, "message": message})
-
-            def log_message(self, _format: str, *_args) -> None:
-                return
-
-        def _serve() -> None:
-            try:
-                server = ThreadingHTTPServer((LOCAL_LINK_HOST, LOCAL_LINK_PORT), Handler)
-            except OSError:
-                return
-            server.serve_forever()
-
-        threading.Thread(target=_serve, daemon=True).start()
-        _LINK_SERVER_STARTED = True
+        return

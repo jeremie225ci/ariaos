@@ -1,39 +1,33 @@
-# GTK4 Migration Status
+# AriaOS Local-First Migration Status
 
-## Done in `gtk4-redesign`
-- Dedicated branch created
-- Isolated GTK4/libadwaita shell scaffold created
-- Shared theme CSS created
-- Intro screen scaffold created
-- Home screen scaffold created
-- Real GTK terminal browser created
-- Live websocket prompt bridge added to the GTK terminal
-- Existing local Aria session/key files are read by the GTK shell
-- SQLite session history is mirrored into the GTK terminal
-- Optional launcher with fallback to Tkinter created
+## Already migrated
 
-## Still using the stable Tk stack
-- Image attachment flow
-- Control Tower auth modal flow
-- Billing modal flow
-- API key entry flow
-- VM default launcher
+- GTK4/libadwaita shell scaffold
+- onboarding flow
+- Aria Home
+- Terminal Aria session UI
+- SQLite-backed session history
+- local OpenAI key dialog
+- VM launcher path for the GTK shell
+- local-first onboarding gate based on the saved OpenAI key
 
-## Safe testing strategy
-1. Keep Tkinter as the default shell
-2. Install GTK runtime dependencies in the VM
-3. Launch `run_aria_shell_gtk.sh` manually
-4. Validate Intro, Home, and Terminal prompt flow
-5. Port image upload and remaining access modals after regression pass
+## Intentionally removed from the main flow
 
-## Runtime dependencies to install in the VM
-- python3-gi
-- gir1.2-gtk-4.0
-- gir1.2-adw-1
+- mandatory account creation
+- mandatory hosted sign-in
+- Control Tower dependency for first use
+- remote account unlock gate before opening Terminal Aria
 
-## Next migration targets
-1. Port image attachment into the GTK composer
-2. Port access/billing/account states one-to-one
-3. Replace the legacy terminal launch fallback
-4. Add title generation polish and runtime notifications
-5. Switch launcher only after full regression pass
+## Still being cleaned
+
+- legacy hosted modules left in the tree but no longer used by the main flow
+- naming and messaging inherited from the old private product line
+- packaging and release docs for the public VM distribution
+- removal of old fallback paths that no longer match the product direction
+
+## Immediate next targets
+
+1. continue deleting unused hosted/control-plane code
+2. document VM build, install, and first-run flow
+3. simplify release tooling around the local-first AriaOS image
+4. reduce duplicated legacy modules and dialogs

@@ -909,11 +909,7 @@ class ConsoleView(Gtk.Box):
         model: str | None = None,
     ) -> bool:
         self.state = self.service.read()
-        remote_mode = bool(self.state.remote_url.strip())
-        if self.state.update_required:
-            self.refresh_state(self.state)
-            self._append_system_notice(self._update_required_message())
-            return False
+        remote_mode = False
         if self.current_running:
             return False
         chosen_session_id = str(session_id or self.selected_session_id or "").strip()
@@ -924,35 +920,18 @@ class ConsoleView(Gtk.Box):
             return False
         self.selected_session_id = chosen_session_id
         self.history.create_session(chosen_session_id, session_title or "New Chat")
-        if self.state.auth_ready:
-            self.service.refresh_access()
+        if not self.state.api_key_ready:
+            self._show_api_key_dialog()
             self.state = self.service.read()
-            if self.state.update_required:
-                self.refresh_state(self.state)
-                self._append_system_notice(self._update_required_message())
-                return False
-        if self.state.plan_status not in {"active", "trialing"}:
-            self.refresh_state(self.service.read())
-            self._append_system_notice(self._access_required_message())
-            return False
-        if not remote_mode:
-            allowed, message = self.service.ensure_access()
-            self.state = self.service.read()
-            if not allowed:
-                self.refresh_state(self.state)
-                self._append_system_notice(message)
-                return False
+            self._sync_controls()
             if not self.state.api_key_ready:
-                self._show_api_key_dialog()
-                self.state = self.service.read()
-                self._sync_controls()
-                if not self.state.api_key_ready:
-                    return False
-            if not self.backend_connected:
-                self._ensure_backend_ready(force=True)
-                if not self.service.backend_ws_reachable():
-                    self.refresh_state(self.service.read())
-                    return False
+                return False
+        if not self.backend_connected:
+            self._ensure_backend_ready(force=True)
+            if not self.service.backend_ws_reachable():
+                self.refresh_state(self.service.read())
+                self._append_system_notice("Connection issue: the local runtime is not reachable.")
+                return False
 
         clean_prompt = str(raw or "").strip()
         if not clean_prompt:
@@ -1853,11 +1832,9 @@ class ConsoleView(Gtk.Box):
         return next((item for item in self.sessions if item.session_id == self.selected_session_id), None)
 
     def _uses_remote_gateway(self) -> bool:
-        return bool(self.state.remote_url.strip())
+        return False
 
     def _runtime_ready(self) -> bool:
-        if self._uses_remote_gateway():
-            return self.backend_connected
         return self.state.api_key_ready and self.backend_connected
 
     def _on_session_selected(self, _listbox: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
