@@ -53,12 +53,12 @@ class ShellView(Gtk.Box):
         hero.set_valign(Gtk.Align.CENTER)
         header.append(hero)
 
-        kicker = Gtk.Label(label="ARIAOS COMMUNITY")
+        kicker = Gtk.Label(label="ARIAOS")
         kicker.add_css_class("shell-kicker")
         kicker.set_halign(Gtk.Align.START)
         hero.append(kicker)
 
-        title = Gtk.Label(label="Aria Community Home")
+        title = Gtk.Label(label="Aria Home")
         title.add_css_class("home-headline")
         title.set_xalign(0)
         title.set_halign(Gtk.Align.START)
@@ -66,8 +66,8 @@ class ShellView(Gtk.Box):
 
         subtitle = Gtk.Label(
             label=(
-                "Local-first AriaOS. Launch Terminal Aria, store your OpenAI key on this VM, "
-                "open files, and keep the community edition focused on the machine itself."
+                "AI operating system for agents. Launch Terminal Aria, store your OpenAI key on this VM, "
+                "open files, and keep the local-first experience focused on the machine itself."
             )
         )
         subtitle.add_css_class("home-copy")
@@ -120,7 +120,7 @@ class ShellView(Gtk.Box):
         body.append(status_row)
         version_label = f"v{state.app_build}" if state.app_build else (state.app_version or "dev")
         runtime_label = "READY" if state.api_key_ready else "KEY REQUIRED"
-        status_row.append(self._build_status_card("MODE", f"Community · {version_label}"))
+        status_row.append(self._build_status_card("MODE", f"AriaOS · {version_label}"))
         status_row.append(self._build_status_card("MODEL", state.openai_model.upper()))
         status_row.append(self._build_status_card("RUNTIME", runtime_label))
 
@@ -150,7 +150,7 @@ class ShellView(Gtk.Box):
         body.append(footer)
 
         footer_text = Gtk.Label(
-            label="AriaOS Community removes the hosted account flow and keeps the experience centered on the VM."
+            label="AriaOS removes the hosted account flow and keeps the experience centered on the VM."
         )
         footer_text.add_css_class("home-footer-text")
         footer_text.set_hexpand(True)

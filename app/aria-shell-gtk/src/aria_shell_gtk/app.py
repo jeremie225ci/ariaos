@@ -73,7 +73,7 @@ class AriaShellApp(Adw.Application):
             self.start_view = candidate
         if self.window is None:
             self.window = Gtk.ApplicationWindow(application=self)
-            self.window.set_title("AriaOS Community")
+            self.window.set_title("AriaOS")
             self.window.set_default_size(760, 560)
             self.window.set_resizable(True)
             self.window.set_decorated(True)
@@ -202,10 +202,10 @@ class AriaShellApp(Adw.Application):
                 pass
             self.window.set_default_size(1040, 620)
         elif view_name == "intro":
-            self.window.set_title("AriaOS Community")
+            self.window.set_title("AriaOS")
             self.window.set_default_size(920, 560)
         else:
-            self.window.set_title("Aria Community")
+            self.window.set_title("Aria Home")
             self.window.set_default_size(920, 640)
 
     def do_shutdown(self) -> None:  # noqa: N802

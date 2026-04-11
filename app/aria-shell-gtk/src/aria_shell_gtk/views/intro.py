@@ -7,10 +7,10 @@ class IntroView(Gtk.Box):
     SLIDES = (
         {
             "kicker": "WELCOME",
-            "title": "Welcome to AriaOS Community",
+            "title": "Welcome to AriaOS",
             "body": (
                 "Aria runs inside a dedicated virtual machine on your computer. "
-                "This edition stays local-first and removes the hosted account flow."
+                "This build stays local-first and removes the hosted account flow."
             ),
             "points": (
                 "Dedicated VM workspace",
@@ -22,7 +22,7 @@ class IntroView(Gtk.Box):
             "kicker": "LOCAL",
             "title": "Your OpenAI key stays on this VM",
             "body": (
-                "After onboarding, AriaOS Community only asks for your OpenAI API key. "
+                "After onboarding, AriaOS only asks for your OpenAI API key. "
                 "It is stored locally on the VM and used to start the local runtime."
             ),
             "points": (
@@ -36,7 +36,7 @@ class IntroView(Gtk.Box):
             "title": "One VM, direct access",
             "body": (
                 "Use Terminal Aria inside the VM, keep your files local, and work from a simpler "
-                "community edition focused on the on-device experience."
+                "local-first agent system focused on the on-device experience."
             ),
             "points": (
                 "Terminal Aria inside the VM",
@@ -48,7 +48,7 @@ class IntroView(Gtk.Box):
             "kicker": "READY",
             "title": "Connect your OpenAI key to start",
             "body": (
-                "Finish onboarding, save your OpenAI key locally, and AriaOS Community will open "
+                "Finish onboarding, save your OpenAI key locally, and AriaOS will open "
                 "Aria Home with the local runtime flow."
             ),
             "points": (
@@ -141,7 +141,7 @@ class IntroView(Gtk.Box):
         right.set_valign(Gtk.Align.FILL)
         hero.append(right)
 
-        panel_title = Gtk.Label(label="COMMUNITY EDITION")
+        panel_title = Gtk.Label(label="LOCAL-FIRST")
         panel_title.add_css_class("intro-panel-kicker")
         panel_title.set_halign(Gtk.Align.START)
         right.append(panel_title)

@@ -2251,13 +2251,13 @@ class RuntimeStore:
     @staticmethod
     def fetch_client_update_manifest(base_url: str | None = None) -> tuple[bool, dict[str, Any], str]:
         del base_url
-        return False, {}, "Hosted update checks are disabled in AriaOS Community."
+        return False, {}, "Hosted update checks are disabled in this local-first AriaOS build."
 
     @staticmethod
     def refresh_client_update_status(base_url: str | None = None) -> tuple[bool, bool, str]:
         del base_url
         _persist_update_gate(required=False)
-        return True, False, "Hosted update checks are disabled in AriaOS Community."
+        return True, False, "Hosted update checks are disabled in this local-first AriaOS build."
 
     @staticmethod
     def apply_client_update(
@@ -2268,7 +2268,7 @@ class RuntimeStore:
     ) -> tuple[bool, str]:
         del vm_admin_password, base_url, progress
         _persist_update_gate(required=False)
-        return False, "Client updates are disabled in AriaOS Community."
+        return False, "Client updates are disabled in this local-first AriaOS build."
 
     @staticmethod
     def open_account_signin(base_url: str | None = None) -> None:
@@ -2609,17 +2609,17 @@ class RuntimeStore:
     @staticmethod
     def refresh_access(base_url: str | None = None) -> tuple[bool, str]:
         del base_url
-        return True, "AriaOS Community runs locally. No account refresh is required."
+        return True, "AriaOS runs locally. No account refresh is required."
 
     @staticmethod
     def login_access(base_url: str, email: str, password: str) -> tuple[bool, str]:
         del base_url, email, password
-        return False, "Account sign-in is disabled in AriaOS Community."
+        return False, "Account sign-in is disabled in this local-first AriaOS build."
 
     @staticmethod
     def create_access(base_url: str, email: str, password: str, display_name: str, company: str) -> tuple[bool, str]:
         del base_url, email, password, display_name, company
-        return False, "Account creation is disabled in AriaOS Community."
+        return False, "Account creation is disabled in this local-first AriaOS build."
 
     @staticmethod
     def ensure_access() -> tuple[bool, str]:

@@ -1110,7 +1110,7 @@ class ConsoleView(Gtk.Box):
         self.connection_label.set_halign(Gtk.Align.START)
         sidebar.append(self.connection_label)
 
-        self.plan_label = Gtk.Label(label="community")
+        self.plan_label = Gtk.Label(label="local")
         self.plan_label.add_css_class("sidebar-plan")
         self.plan_label.set_halign(Gtk.Align.START)
         sidebar.append(self.plan_label)
@@ -1585,7 +1585,7 @@ class ConsoleView(Gtk.Box):
         window.destroy()
 
     def _voice_runtime_allowed(self) -> tuple[bool, str]:
-        return False, "Voice mode is disabled in AriaOS Community for now."
+        return False, "Voice mode is disabled in this local-first AriaOS build for now."
 
     def _voice_supports_followups(self) -> bool:
         return bool(
@@ -1892,7 +1892,7 @@ class ConsoleView(Gtk.Box):
 
     def _plan_label_text(self) -> str:
         version = f"v{self.state.app_build}" if self.state.app_build else (self.state.app_version or "dev")
-        return f"community · {version}"
+        return f"local · {version}"
 
     def _maybe_show_activation_notice(self, previous_state: RuntimeState | None, new_state: RuntimeState) -> None:
         pending_plan = new_state.activation_notice_plan
@@ -2009,7 +2009,7 @@ class ConsoleView(Gtk.Box):
             self.empty_box.set_visible(False)
             self.overlay_kicker.set_label("LOCAL OPENAI KEY")
             self.overlay_body.set_label(
-                "Connect your OpenAI key locally to unlock Terminal Aria in AriaOS Community."
+                "Connect your OpenAI key locally to unlock Terminal Aria in AriaOS."
             )
             self.overlay_status.set_label("The key is stored locally on this VM and the local backend restarts after save.")
             self.overlay_primary.set_label("Connect Key")
