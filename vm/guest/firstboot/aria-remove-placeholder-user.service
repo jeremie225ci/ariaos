@@ -1,0 +1,14 @@
+[Unit]
+Description=AriaOS remove placeholder user before first boot
+ConditionPathExists=/var/lib/ariaos/remove-placeholder-user
+After=local-fs.target systemd-user-sessions.service
+Before=aria-firstboot-user-setup.service getty@tty1.service display-manager.service lightdm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/ariaos/aria-remove-placeholder-user.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=graphical.target
+WantedBy=multi-user.target

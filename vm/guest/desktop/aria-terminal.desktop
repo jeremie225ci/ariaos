@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Terminal Aria
+Comment=Launch the Aria workspace
+Exec=env ARIA_SHELL_START_VIEW=terminal aria-shell-launch
+Icon=/usr/share/pixmaps/aria-logo.png
+Terminal=false
+Categories=Utility;
+StartupNotify=false

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Aria Session Bootstrap
+TryExec=/usr/local/bin/aria-user-session-bootstrap
+Exec=/usr/local/bin/aria-user-session-bootstrap
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

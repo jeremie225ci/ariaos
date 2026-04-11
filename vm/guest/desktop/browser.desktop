@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ARIA Browser
+Comment=Open Google Chrome
+Exec=aria-browser --url about:blank
+Icon=google-chrome
+Terminal=false
+Categories=Network;WebBrowser;
+StartupNotify=false

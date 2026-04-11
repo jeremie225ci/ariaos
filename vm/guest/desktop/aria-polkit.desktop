@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aria PolicyKit Agent
+Comment=Enable authenticated power actions in the Aria session
+Exec=/usr/lib/x86_64-linux-gnu/ukui-polkit/polkit-ukui-authentication-agent-1
+Icon=system-shutdown
+Terminal=false
+Categories=System;
+StartupNotify=false

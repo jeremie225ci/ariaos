@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aria Keep Display Awake
+Comment=Disable screen blanking and display sleep in the Aria VM session
+Exec=aria-keep-display-awake.sh
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=8

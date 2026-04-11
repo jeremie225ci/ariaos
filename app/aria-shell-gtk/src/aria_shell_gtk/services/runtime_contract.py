@@ -1,0 +1,20 @@
+from __future__ import annotations
+
+
+MSG_FINAL_RESPONSE = "final_response"
+MSG_COMPUTER_ACTION_REQUEST = "computer_action_request"
+MSG_COMPUTER_ACTION_RESULT = "computer_action_result"
+MSG_COMPUTER_SCREENSHOT_REQUEST = "computer_screenshot_request"
+MSG_COMPUTER_SCREENSHOT_RESULT = "computer_screenshot_result"
+MSG_START_TASK = "start_task"
+MSG_STATUS_UPDATE = "status_update"
+MSG_STOP_TASK = "stop_task"
+MSG_PAUSE_TASK = "pause_task"
+MSG_RESUME_TASK = "resume_task"
+MSG_TASK_MESSAGE = "task_message"
+MSG_SYSTEM = "system"
+MSG_TASK_ACCEPTED = "task_accepted"
+MSG_TASK_FAILED = "task_failed"
+MSG_TASK_STOPPED = "task_stopped"
+MSG_VM_TOOL_REQUEST = "vm_tool_request"
+MSG_VM_TOOL_RESULT = "vm_tool_result"

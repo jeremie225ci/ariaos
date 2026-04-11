@@ -1,0 +1,24 @@
+[Unit]
+Description=AriaOS first-boot OS user setup
+ConditionPathExists=/var/lib/ariaos/firstboot-user-setup
+After=systemd-user-sessions.service
+Before=getty@tty1.service display-manager.service lightdm.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=oneshot
+Environment=ARIA_FIRSTBOOT_TTY=/dev/tty1
+ExecStartPre=/bin/sh -c '/bin/plymouth --ping >/dev/null 2>&1 && /bin/plymouth quit || true'
+ExecStart=/usr/local/lib/ariaos/aria-firstboot-user-setup.sh
+StandardInput=tty-force
+StandardOutput=inherit
+StandardError=inherit
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+RemainAfterExit=no
+
+[Install]
+WantedBy=graphical.target
+WantedBy=multi-user.target

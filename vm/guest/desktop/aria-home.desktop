@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aria Home
+Comment=Open the Aria shell
+Exec=aria-shell-launch
+Icon=/usr/share/pixmaps/aria-logo.png
+Terminal=false
+Categories=Utility;
+StartupNotify=false

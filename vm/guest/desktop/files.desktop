@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ARIA Files
+Comment=Open the local file browser
+Exec=sh -lc 'mkdir -p "$HOME/AriaWorkspace" && exec thunar "$HOME/AriaWorkspace"'
+Icon=folder
+Terminal=false
+Categories=System;FileTools;
+StartupNotify=false
