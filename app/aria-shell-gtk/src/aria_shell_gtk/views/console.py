@@ -25,7 +25,7 @@ from gi.repository import GLib, Gtk, Pango
 from ..services.loop import LocalLoop
 from ..services.history import HistoryService, SessionMessage, SessionSummary
 from ..services.core import RuntimeState, RuntimeStore, SUPPORTED_OPENAI_VOICE_NAMES, SUPPORTED_VOICE_LANGUAGES
-from ..services.voice_client import VoiceClient
+from ..services.voice_client import VoiceClient, voice_environment_error
 from .panels import show_model_dialog, show_key_dialog
 from .voice_overlay import VoiceOverlay
 
@@ -841,20 +841,20 @@ class ConsoleView(Gtk.Box):
         self.strip_voice_name_button = Gtk.Button(label="Voice: MARIN")
         self.strip_voice_name_button.add_css_class("dock-button")
         self.strip_voice_name_button.connect("clicked", lambda _btn: self._show_voice_name_dialog())
-        self.strip_voice_name_button.set_visible(False)
+        self.strip_voice_name_button.set_visible(True)
         strip_actions.append(self.strip_voice_name_button)
 
         self.strip_voice_language_button = Gtk.Button(label="Language: EN")
         self.strip_voice_language_button.add_css_class("dock-button")
         self.strip_voice_language_button.connect("clicked", lambda _btn: self._show_voice_language_dialog())
-        self.strip_voice_language_button.set_visible(False)
+        self.strip_voice_language_button.set_visible(True)
         strip_actions.append(self.strip_voice_language_button)
 
         self.strip_voice_button = Gtk.ToggleButton(label="Voice Mode")
         self.strip_voice_button.add_css_class("dock-button")
         self.strip_voice_button.add_css_class("voice-toggle-button")
         self._voice_toggle_handler_id = self.strip_voice_button.connect("toggled", self._on_voice_toggled)
-        self.strip_voice_button.set_visible(False)
+        self.strip_voice_button.set_visible(True)
         strip_actions.append(self.strip_voice_button)
 
         strip.append(strip_actions)
@@ -1223,7 +1223,25 @@ class ConsoleView(Gtk.Box):
         window.destroy()
 
     def _voice_runtime_allowed(self) -> tuple[bool, str]:
-        return False, "Voice mode is disabled in this local-first AriaOS build for now."
+        if not self.state.api_key_ready:
+            return False, "Connect your OpenAI key before enabling Voice Mode."
+
+        environment_error = voice_environment_error()
+        if environment_error:
+            return False, environment_error
+
+        # Voice mode relies on the normal local task runtime plus the local
+        # voice websocket runtime. Both must be reachable before enabling it.
+        if not self.service.backend_ws_reachable():
+            self._ensure_backend_ready(force=True)
+            if not self.service.backend_ws_reachable():
+                return False, "The local Aria runtime is not reachable yet."
+
+        if not self.service.voice_ws_reachable():
+            if not self.service.restart_local_voice_backend():
+                return False, "The local voice runtime could not be started."
+
+        return True, ""
 
     def _voice_supports_followups(self) -> bool:
         return False
@@ -1326,6 +1344,8 @@ class ConsoleView(Gtk.Box):
             self.voice_overlay.set_voice_name(self._voice_name())
             self.voice_overlay.set_mode_visible(True)
             self.voice_overlay.set_state("thinking")
+        # The voice client only handles the local duplex audio channel. Task
+        # execution still runs through the same local text backend as typing.
         started = self.voice_client.start()
         if not started:
             self.voice_mode_enabled = False
@@ -2155,7 +2175,13 @@ class ConsoleView(Gtk.Box):
         self.strip_access_button.set_sensitive(not locked)
         self.strip_key_button.set_sensitive(not locked)
         self.strip_model_button.set_sensitive(not locked)
-        can_voice = False
+        # Voice controls stay available during a running task so the user can
+        # still stop the task by voice.
+        can_voice = (
+            not self._update_in_progress
+            and not self._update_check_inflight
+            and self.state.api_key_ready
+        )
         if self.strip_voice_button is not None:
             self.strip_voice_button.set_sensitive(can_voice)
         if self.strip_voice_name_button is not None:

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import ipaddress
-import json
 import os
 import queue
 import shutil
@@ -12,7 +10,6 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse, urlunparse
 
 try:
     import websockets
@@ -22,9 +19,7 @@ except Exception:  # pragma: no cover
 from .core import (
     DEFAULT_VOICE_NAME,
     DEFAULT_VOICE_LANGUAGE,
-    LEGACY_AUTH_KEY,
     RuntimeStore,
-    SESSION_FILE,
     SUPPORTED_OPENAI_VOICE_NAMES,
     SUPPORTED_VOICE_LANGUAGES,
 )
@@ -37,6 +32,7 @@ TextCallback = Callable[[str], None]
 
 
 VOICE_WS_ENV = "ARIA_VOICE_WS_URL"
+VOICE_LOCAL_WS_URL = "ws://127.0.0.1:8081/ws/voice"
 VOICE_HEARTBEAT_SECONDS = 12.0
 VOICE_CONNECT_TIMEOUT = 12.0
 VOICE_RETRY_SECONDS = 2.0
@@ -62,39 +58,14 @@ def _normalize_voice_language(value: str | None) -> str:
     return DEFAULT_VOICE_LANGUAGE
 
 
-def _load_auth_token() -> str:
-    try:
-        payload = json.loads(Path(SESSION_FILE).read_text(encoding="utf-8"))
-    except Exception:
-        return ""
-    return str(payload.get("auth_token") or payload.get(LEGACY_AUTH_KEY) or "").strip()
-
-
 def _derive_voice_ws_url(service: RuntimeStore) -> str:
+    # The public build talks to a local voice server inside the VM. An explicit
+    # override is still allowed for development, but the default path is local.
     override = str(os.environ.get(VOICE_WS_ENV) or "").strip()
     if override:
         return override
-    state = service.read()
-    source = str(state.remote_url or "").strip() or str(state.hub_url or "").strip()
-    parsed = urlparse(source)
-    if not parsed.scheme:
-        return ""
-    if parsed.scheme in {"ws", "wss"}:
-        scheme = parsed.scheme
-    else:
-        scheme = "wss" if parsed.scheme == "https" else "ws"
-    host = parsed.hostname or ""
-    port = parsed.port
-    try:
-        ipaddress.ip_address(host)
-        is_literal_ip = True
-    except ValueError:
-        is_literal_ip = False
-    if is_literal_ip and port in {8090, 8190}:
-        voice_port = port + 2
-        netloc = f"{host}:{voice_port}"
-        return urlunparse((scheme, netloc, "/ws/voice", "", "", ""))
-    return urlunparse((scheme, parsed.netloc, "/ws/voice", "", "", ""))
+    _ = service
+    return VOICE_LOCAL_WS_URL
 
 
 def _pick_capture_command() -> list[str] | None:
@@ -114,6 +85,16 @@ def _pick_capture_command() -> list[str] | None:
         if shutil.which(command[0]):
             return command
     return None
+
+
+def voice_environment_error() -> str:
+    if websockets is None:
+        return "Voice mode is unavailable because the websockets dependency is missing."
+    if _pick_capture_command() is None:
+        return "Voice mode is unavailable because no microphone capture command is installed."
+    if shutil.which("ffplay") is None:
+        return "Voice mode is unavailable because ffplay is not installed."
+    return ""
 
 
 def _prepare_audio_devices() -> None:
@@ -191,9 +172,10 @@ class VoiceClient:
         if self.active:
             _debug_log("start skipped: already active")
             return True
-        if websockets is None:
-            _debug_log("start failed: websockets missing")
-            self._emit_error("Voice mode is unavailable: websockets is not installed.")
+        environment_error = voice_environment_error()
+        if environment_error:
+            _debug_log(f"start failed: {environment_error}")
+            self._emit_error(environment_error)
             return False
         self._stop_event.clear()
         _debug_log("start requested")
@@ -214,7 +196,7 @@ class VoiceClient:
         self._queue_payload({"type": "task_snapshot", "snapshot": self._latest_snapshot})
 
     def set_listening_enabled(self, listening: bool) -> None:
-        self._set_remote_listening_enabled(bool(listening), force=True)
+        self._set_listening_enabled_internal(bool(listening), force=True)
 
     def set_voice_name(self, voice_name: str) -> None:
         self._queue_payload({"type": "client_state", "voice_name": _normalize_voice_name(voice_name)})
@@ -262,7 +244,7 @@ class VoiceClient:
         except Exception:
             pass
 
-    def _set_remote_listening_enabled(self, listening: bool, *, force: bool = False) -> None:
+    def _set_listening_enabled_internal(self, listening: bool, *, force: bool = False) -> None:
         normalized = bool(listening)
         if not force and normalized == self._listening_enabled:
             return
@@ -284,11 +266,6 @@ class VoiceClient:
 
     async def _run_forever(self) -> None:
         while not self._stop_event.is_set():
-            auth_token = _load_auth_token()
-            if not auth_token:
-                _debug_log("run_forever abort: auth token missing")
-                self._emit_error("Voice mode is disabled in this local-only AriaOS build.")
-                return
             ws_url = _derive_voice_ws_url(self.service)
             if not ws_url:
                 _debug_log("run_forever abort: ws_url missing")
@@ -296,7 +273,7 @@ class VoiceClient:
                 return
             try:
                 _debug_log(f"connecting to {ws_url}")
-                await self._connect_once(ws_url, auth_token)
+                await self._connect_once(ws_url)
             except asyncio.CancelledError:
                 _debug_log("run_forever cancelled")
                 raise
@@ -309,7 +286,7 @@ class VoiceClient:
                 return
             await asyncio.sleep(VOICE_RETRY_SECONDS)
 
-    async def _connect_once(self, ws_url: str, auth_token: str) -> None:
+    async def _connect_once(self, ws_url: str) -> None:
         state = self.service.read()
         self._emit_state("thinking")
         _debug_log("connect_once opening websocket")
@@ -328,7 +305,6 @@ class VoiceClient:
                 json.dumps(
                     {
                         "type": "hello",
-                        "auth_token": auth_token,
                         "device_id": state.device_id,
                         "device_name": state.device_name,
                         "machine_uid": state.machine_uid,
@@ -363,6 +339,8 @@ class VoiceClient:
                     self._latest_snapshot = snapshot
                     await websocket.send(json.dumps({"type": "task_snapshot", "snapshot": snapshot}, ensure_ascii=False))
 
+            # Sender, receiver, heartbeat and microphone capture run as peers so
+            # the local voice session behaves like a single duplex channel.
             sender = asyncio.create_task(self._sender_loop(websocket))
             receiver = asyncio.create_task(self._receiver_loop(websocket))
             heartbeat = asyncio.create_task(self._heartbeat_loop())
@@ -426,6 +404,8 @@ class VoiceClient:
                 self._emit_spoken_text(str(data.get("text") or ""))
                 continue
             if msg_type == "audio_delta":
+                # The server streams raw PCM deltas so playback can start before
+                # the full spoken answer has been generated.
                 audio_b64 = str(data.get("audio_b64") or "")
                 if audio_b64:
                     try:
@@ -488,6 +468,8 @@ class VoiceClient:
                 if not chunk:
                     _debug_log("capture loop EOF")
                     break
+                # While Aria is speaking, microphone capture is paused locally to
+                # avoid feeding the synthesized answer straight back into STT.
                 if self._assistant_speaking:
                     continue
                 if time.monotonic() < self._capture_paused_until:
@@ -511,6 +493,8 @@ class VoiceClient:
     def _queue_audio_delta(self, audio_bytes: bytes) -> None:
         if not audio_bytes:
             return
+        # Briefly pause capture before and during playback so the local voice
+        # loop does not self-trigger on its own synthesized audio.
         self._capture_paused_until = max(self._capture_paused_until, time.monotonic() + 0.85)
         should_disable_listening = False
         _debug_log(f"audio delta bytes={len(audio_bytes)}")
@@ -521,7 +505,7 @@ class VoiceClient:
             self._ensure_playback_stream_locked()
             queue_ref = self._playback_queue
         if should_disable_listening:
-            self._set_remote_listening_enabled(False)
+            self._set_listening_enabled_internal(False)
         if queue_ref is None:
             _debug_log("audio delta dropped: no playback queue")
             return
@@ -623,7 +607,7 @@ class VoiceClient:
                     self._playback_thread = None
             self._capture_paused_until = max(self._capture_paused_until, time.monotonic() + 0.25)
             if should_reenable_listening:
-                self._set_remote_listening_enabled(True)
+                self._set_listening_enabled_internal(True)
 
     def _finish_playback(self) -> None:
         self._capture_paused_until = max(self._capture_paused_until, time.monotonic() + 0.45)
@@ -645,7 +629,7 @@ class VoiceClient:
             self._playback_proc = None
             self._playback_queue = None
             self._playback_thread = None
-        self._set_remote_listening_enabled(True)
+        self._set_listening_enabled_internal(True)
         if queue_ref is not None:
             try:
                 queue_ref.put_nowait(None)

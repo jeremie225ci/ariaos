@@ -47,6 +47,8 @@ MEMORY_INDEX_DB_PATH = DATA_DIR / "aria_memory_index.db"
 STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))) / "ariaos"
 BACKEND_PID_PATH = STATE_DIR / "backend.pid"
 BACKEND_LOG_PATH = STATE_DIR / "backend.log"
+VOICE_BACKEND_PID_PATH = STATE_DIR / "voice-backend.pid"
+VOICE_BACKEND_LOG_PATH = STATE_DIR / "voice-backend.log"
 CLIENT_UPDATE_DIR = STATE_DIR / "client-update"
 CLIENT_INSTALL_DIR = Path(os.environ.get("ARIA_CLIENT_DIR") or "/opt/aria-client")
 PACKAGED_APP_DIR = CLIENT_INSTALL_DIR / "share" / "AriaApp"
@@ -2174,59 +2176,117 @@ class RuntimeStore:
         RuntimeStore.save_user_secrets(payload)
 
     @staticmethod
-    def restart_local_backend() -> bool:
-        if str(load_runtime_config().get("remote_url") or "").strip():
-            return True
-        ariaos_dir = Path(os.environ.get("ARIAOS_DIR") or str(Path(__file__).resolve().parents[5]))
+    def _local_repo_root() -> Path:
+        return Path(os.environ.get("ARIAOS_DIR") or str(Path(__file__).resolve().parents[5]))
+
+    @staticmethod
+    def _read_pid(pid_path: Path) -> int | None:
+        try:
+            if pid_path.exists():
+                return int(pid_path.read_text(encoding="utf-8").strip())
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def _stop_pid(pid_path: Path) -> None:
+        pid = RuntimeStore._read_pid(pid_path)
+        if not pid:
+            return
+        try:
+            os.kill(pid, 15)
+            time.sleep(0.5)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _spawn_local_service(
+        *,
+        command: list[str],
+        pid_path: Path,
+        log_path: Path,
+        port: int,
+    ) -> bool:
+        ariaos_dir = RuntimeStore._local_repo_root()
         if not ariaos_dir.exists():
             return False
 
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-
-        pid = None
-        try:
-            if BACKEND_PID_PATH.exists():
-                pid = int(BACKEND_PID_PATH.read_text(encoding="utf-8").strip())
-        except Exception:
-            pid = None
-
-        if pid:
-            try:
-                os.kill(pid, 15)
-                time.sleep(0.5)
-            except Exception:
-                pass
+        RuntimeStore._stop_pid(pid_path)
 
         env = dict(os.environ)
         existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+        # The local runtime lives inside the repository, so the repo root is
+        # injected into PYTHONPATH before spawning the backend entrypoints.
         env["PYTHONPATH"] = (
             f"{ariaos_dir}:{existing_pythonpath}"
             if existing_pythonpath
             else str(ariaos_dir)
         )
-        with BACKEND_LOG_PATH.open("a", encoding="utf-8") as log_file:
+        with log_path.open("a", encoding="utf-8") as log_file:
             proc = subprocess.Popen(
-                ["python3", "-u", "backend/server.py"],
+                command,
                 cwd=str(ariaos_dir),
                 env=env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-        BACKEND_PID_PATH.write_text(str(proc.pid), encoding="utf-8")
+        pid_path.write_text(str(proc.pid), encoding="utf-8")
 
         deadline = time.time() + 12.0
         while time.time() < deadline:
             sock = socket.socket()
             sock.settimeout(0.25)
             try:
-                sock.connect(("127.0.0.1", 8080))
+                sock.connect(("127.0.0.1", port))
                 return True
             except OSError:
                 time.sleep(0.25)
             finally:
                 sock.close()
         return False
+
+    @staticmethod
+    def voice_ws_reachable(host: str = "127.0.0.1", port: int = 8081, timeout: float = 0.4) -> bool:
+        sock = socket.socket()
+        sock.settimeout(timeout)
+        try:
+            sock.connect((host, port))
+            return True
+        except OSError:
+            return False
+        finally:
+            sock.close()
+
+    @staticmethod
+    def restart_local_voice_backend() -> bool:
+        if RuntimeStore.voice_ws_reachable():
+            return True
+        # Voice runs as its own lightweight local websocket so the GTK shell can
+        # reconnect audio independently from the text task runtime.
+        return RuntimeStore._spawn_local_service(
+            command=["python3", "-u", "backend/voice_server.py"],
+            pid_path=VOICE_BACKEND_PID_PATH,
+            log_path=VOICE_BACKEND_LOG_PATH,
+            port=8081,
+        )
+
+    @staticmethod
+    def restart_local_backend() -> bool:
+        if str(load_runtime_config().get("remote_url") or "").strip():
+            return True
+        ok = RuntimeStore._spawn_local_service(
+            command=["python3", "-u", "backend/server.py"],
+            pid_path=BACKEND_PID_PATH,
+            log_path=BACKEND_LOG_PATH,
+            port=8080,
+        )
+        if ok:
+            # The voice runtime is optional for Terminal Aria itself, so we
+            # restart it best-effort without blocking the text backend.
+            RuntimeStore.restart_local_voice_backend()
+        return ok
 
     @staticmethod
     def state_stamp() -> tuple[float, float]:
