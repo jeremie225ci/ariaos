@@ -1,3 +1,5 @@
+"""Readable local task loop used by the websocket backend."""
+
 from __future__ import annotations
 
 import time
@@ -46,6 +48,8 @@ class LocalTaskLoop:
         stop_requested: Callable[[], bool],
         started_at: float,
     ) -> LocalTaskResult:
+        # This is the public replacement for the older hidden kernel/engine
+        # naming inside the VM bundle: one local request in, one model call out.
         runtime = load_runtime()
         if not runtime["api_key"]:
             usage = normalize_usage({}, started_at=started_at, success=False)

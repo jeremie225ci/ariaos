@@ -1,3 +1,5 @@
+"""Websocket entrypoint for the local Terminal Aria runtime."""
+
 from __future__ import annotations
 
 import asyncio
@@ -138,6 +140,8 @@ class AriaLocalServer:
                 request_id = str(data.get("requestId") or "").strip()
                 session_id = str(data.get("sessionId") or "").strip() or "default"
 
+                # The GTK shell still speaks the compact legacy protocol codes,
+                # so the local server accepts both code names and readable names.
                 if _is_local_type(msg_type, L0, "new_session"):
                     self._mark_stop(None, websocket)
                     self.loopagentic.reset_session(session_id)

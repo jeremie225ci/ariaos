@@ -1,3 +1,5 @@
+"""Shared OpenAI helpers for the readable local AriaOS backend."""
+
 from __future__ import annotations
 
 import io
@@ -13,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from backend.prompts import CHAT_SYSTEM_PROMPT
 
 DEFAULT_MODEL = "gpt-5.4"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -25,16 +28,6 @@ MAX_CHUNK_CHARS = 180
 VOICE_SAMPLE_RATE = 24_000
 PRIMARY_SECRETS_FILE = Path.home() / ".config" / "ariaos" / "user_secrets.json"
 LEGACY_SECRETS_FILE = Path.home() / ".config" / "ariaos" / "local_agent_secrets.json"
-
-# The public repository no longer mirrors the old split client/server product,
-# so this module keeps the local "brain" logic in one readable place that can
-# be reused by both the terminal websocket server and the local voice server.
-CHAT_SYSTEM_PROMPT = (
-    "You are AriaOS, a local AI workspace running inside a Linux VM. "
-    "Be practical, concise, and action-oriented. "
-    "If the user asks you to do something that requires missing capabilities in this local build, "
-    "say so plainly and offer the closest useful next step."
-)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -208,6 +201,8 @@ def load_runtime() -> dict[str, str]:
     payload: dict[str, Any] = {}
     for path in (PRIMARY_SECRETS_FILE, LEGACY_SECRETS_FILE):
         payload.update(_read_json(path))
+    # `user_secrets.json` is the public local-first source of truth now, but we
+    # still read the legacy file so older VM builds continue to boot cleanly.
     return {
         "api_key": str(os.environ.get("OPENAI_API_KEY") or payload.get("openai_api_key") or "").strip(),
         "base_url": str(os.environ.get("OPENAI_BASE_URL") or payload.get("openai_base_url") or DEFAULT_BASE_URL).strip()
