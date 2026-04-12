@@ -108,5 +108,5 @@ echo "Export complete:"
 echo "  Versioned: $VERSIONED_OVA"
 echo "  Latest   : $LATEST_OVA"
 echo
-echo "Set this in the Control Tower env:"
+echo "Set this in your release environment:"
 echo "  ARIA_OVA_PATH=$LATEST_OVA"

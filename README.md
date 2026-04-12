@@ -51,12 +51,12 @@ For the actual product experience, the intended path remains the preconfigured A
 
 ### Current Direction
 
-The public AriaOS flow is now **local-first**:
+The public AriaOS flow is now **local-only**:
 
 - no mandatory account creation
 - no mandatory remote server dependency for first use
 - OpenAI API key stored locally inside the VM
-- local runtime as the main execution path
+- embedded local runtime as the only supported execution path
 
 ## 🔧 Configuration
 

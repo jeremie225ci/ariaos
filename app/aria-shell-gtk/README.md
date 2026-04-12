@@ -44,4 +44,4 @@ PYTHONPATH=src python3 -m aria_shell_gtk
 
 - the shell reads local AriaOS state from the VM user profile
 - the launcher used by the VM guest files lives in `vm/guest/bin/run_aria_shell_gtk.sh`
-- some legacy hosted modules still exist in the tree and are being removed as the migration continues
+- the public shell now targets a pure local VM architecture

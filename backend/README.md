@@ -10,4 +10,4 @@ It runs fully locally and supports:
 - streamed text responses over the shell websocket protocol
 - stop requests
 
-This replaces the old split remote runtime path for the community build.
+This replaces the old split runtime path with a single local runtime inside the VM.

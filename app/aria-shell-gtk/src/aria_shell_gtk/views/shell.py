@@ -150,7 +150,7 @@ class ShellView(Gtk.Box):
         body.append(footer)
 
         footer_text = Gtk.Label(
-            label="AriaOS removes the hosted account flow and keeps the experience centered on the VM."
+            label="AriaOS keeps the full experience centered on the VM with a local OpenAI key and local runtime."
         )
         footer_text.add_css_class("home-footer-text")
         footer_text.set_hexpand(True)
