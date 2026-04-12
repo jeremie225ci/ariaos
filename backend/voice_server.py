@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from backend.brain import load_runtime, synthesize_speech, transcribe_pcm
 
@@ -108,7 +109,12 @@ class AriaVoiceServer:
 
     async def _send_json(self, websocket, state: VoiceSessionState, payload: dict[str, Any]) -> None:
         async with state.send_lock:
-            await websocket.send(json.dumps(payload, ensure_ascii=False))
+            try:
+                await websocket.send(json.dumps(payload, ensure_ascii=False))
+            except ConnectionClosed:
+                # Closing the client while Aria is still speaking is a normal
+                # shutdown path during local tests and UI restarts.
+                return
 
     async def _send_status(self, websocket, state: VoiceSessionState, status: str) -> None:
         await self._send_json(websocket, state, {"type": "status", "state": str(status or "idle").strip() or "idle"})
