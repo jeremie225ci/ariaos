@@ -422,7 +422,7 @@ def _should_record_memory_summary(text: str) -> bool:
         "could not",
         "error:",
         "connection issue",
-        "connect a control tower account first",
+        "connect your openai key",
         "update required",
     )
     return not any(marker in cleaned for marker in blocked_markers)
@@ -444,24 +444,6 @@ def _looks_like_smalltalk(text: str) -> bool:
         "ca va",
     )
     return any(marker in lowered for marker in smalltalk_markers) and len(lowered) < 80
-
-
-def _is_useful_memory_candidate(goal: str, text: str, *, has_remote_task: bool, has_details: bool) -> bool:
-    normalized_goal = _normalize_display_text(goal).strip()
-    normalized_text = _normalize_display_text(text).strip()
-    if not normalized_goal or not normalized_text:
-        return False
-    if not has_remote_task and not has_details:
-        return False
-    if len(normalized_goal) < 12 or len(normalized_text) < 24:
-        return False
-    if _looks_like_smalltalk(normalized_goal) or _looks_like_smalltalk(normalized_text):
-        return False
-    packed_markers = ("M:", "\nM:", "L:", "\nL:", "Q:", "\nQ:", "N:", "\nN:", "Verified playbooks:", "Recent useful task summaries:")
-    if any(marker in normalized_text for marker in packed_markers):
-        return False
-    return _should_record_memory_summary(normalized_text)
-
 
 
 def _preview_text(text: str, role: str = "assistant") -> str:

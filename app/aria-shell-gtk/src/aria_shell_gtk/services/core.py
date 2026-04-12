@@ -14,16 +14,12 @@ import threading
 import time
 import uuid
 import webbrowser
-import base64
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote, urlparse
 
 from .local_secrets import (
     LOCAL_SECRET_STAMP,
@@ -32,478 +28,7 @@ from .local_secrets import (
     sensitive_fields,
     set_secret,
 )
-from .bootstrap import (
-    default_model_api,
-    default_remote_ws,
-    endpoint_path,
-    local_hub_url,
-    public_hub_url,
-)
-
-try:
-    from .mesh import (
-        ensure_access as _ensure_access,
-        fetch_realtime_token as _fetch_realtime_token,
-        login_access as _login_access,
-        prepare_task as _prepare_task,
-        refresh_access as _refresh_access,
-        report_usage as _report_usage,
-        create_access as _create_access,
-        sync_device as _sync_device,
-        sync_task as _sync_task,
-    )
-except Exception:
-    JsonLoader = Callable[[Any], dict[str, Any]]
-    JsonSaver = Callable[[Any, dict[str, Any]], None]
-    HttpJson = Callable[..., tuple[int, dict[str, Any], str | None]]
-    HttpUploadBinary = Callable[..., tuple[int, str]]
-
-    _OP_LOGIN = "l"
-    _OP_SIGNUP = "n"
-    _OP_SESSION = "m"
-    _OP_CLAIM = "c"
-    _OP_PREPARE = "p"
-    _OP_DEVICE = "d"
-    _OP_REALTIME = "rt"
-    _OP_SCREENSHOT = "k"
-    _OP_SYNC = "s"
-    _OP_USAGE = "u"
-
-    def _plan_status_from_payload_local(plan: dict[str, Any], session: dict[str, Any]) -> tuple[str, str, str]:
-        plan_key = str(plan.get("k") or plan.get("key") or session.get("plan_key") or "free")
-        plan_name = str(plan.get("n") or plan.get("name") or session.get("plan_name") or "Free")
-        plan_status = str(plan.get("s") or plan.get("status") or session.get("plan_status") or "trialing")
-        return plan_key, plan_name, plan_status
-
-    def _merge_plan_state_local(*, session: dict[str, Any], data: dict[str, Any], canonical: str, save_json: JsonSaver, session_file) -> None:
-        plan = data.get("p") or data.get("plan") or {}
-        plan_key, plan_name, plan_status = _plan_status_from_payload_local(plan if isinstance(plan, dict) else {}, session)
-        if plan_status == "active" and plan_key in {"monthly_pro", "annual_pro"}:
-            if str(session.get("activation_notice_seen_for") or "") != plan_key:
-                session["activation_notice_pending"] = plan_key
-        session.update(
-            {
-                "account_uid": str(data.get("u") or data.get("userId") or session.get("account_uid") or ""),
-                "plan_status": plan_status,
-                "plan_key": plan_key,
-                "plan_name": plan_name,
-                "prompts_remaining": data.get("r") if "r" in data else data.get("remainingPrompts"),
-                "hub_url": canonical,
-            }
-        )
-        save_json(session_file, session)
-
-    def _runtime_call_local(
-        *,
-        canonical: str,
-        http_json: HttpJson,
-        op: str,
-        auth_token: str | None = None,
-        payload: dict[str, Any] | None = None,
-    ) -> tuple[int, dict[str, Any], str | None]:
-        body = {"o": op}
-        if isinstance(payload, dict) and payload:
-            body.update(payload)
-        return http_json(endpoint_path(canonical), method="POST", auth_token=auth_token, payload=body)
-
-    def _login_access(
-        *,
-        base_url: str,
-        email: str,
-        password: str,
-        session_file,
-        save_json: JsonSaver,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        refresh_session: Callable[[str | None], tuple[bool, str]],
-    ) -> tuple[bool, str]:
-        canonical = canonical_hub_url(base_url)
-        status, body, auth_token = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_LOGIN,
-            payload={"e": str(email or "").strip(), "p": str(password or "")},
-        )
-        if status >= 400 or not body.get("ok") or not auth_token:
-            return False, str(body.get("error") or "Control Tower sign in failed.")
-        user = dict((body.get("d") or {}).get("u") or {}) if isinstance(body.get("d"), dict) else {}
-        save_json(
-            session_file,
-            {
-                "account_email": str(user.get("email") or email),
-                "account_uid": str(user.get("uid") or ""),
-                "plan_status": "trialing",
-                "plan_key": "free",
-                "hub_url": canonical,
-                "auth_token": auth_token,
-                "plan_name": "AriaOS",
-                "activation_notice_pending": "",
-                "activation_notice_seen_for": "",
-                "prompts_remaining": None,
-            },
-        )
-        return refresh_session(canonical)
-
-    def _create_access(
-        *,
-        base_url: str,
-        email: str,
-        password: str,
-        display_name: str,
-        company: str,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-    ) -> tuple[bool, str]:
-        canonical = canonical_hub_url(base_url)
-        status, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_SIGNUP,
-            payload={
-                "e": str(email or "").strip(),
-                "p": str(password or ""),
-                "d": str(display_name or "").strip(),
-                "c": str(company or "").strip(),
-            },
-        )
-        if status >= 400 or not body.get("ok"):
-            return False, str(body.get("error") or "Control Tower signup failed.")
-        return True, "Account created. Verify your email from the link we sent, then sign in."
-
-    def _refresh_access(
-        *,
-        base_url: str | None,
-        session_file,
-        load_json: JsonLoader,
-        save_json: JsonSaver,
-        hub_url: str,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        clear_account_session: Callable[[], None],
-    ) -> tuple[bool, str]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(base_url or session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token:
-            return False, "No local Control Tower session found."
-        status, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_SESSION,
-            auth_token=auth_token,
-        )
-        if status >= 400 or not body.get("ok"):
-            if status == 401:
-                clear_account_session()
-            return False, str(body.get("error") or "Failed to refresh Control Tower state.")
-        data = dict(body.get("d") or {}) if isinstance(body.get("d"), dict) else {}
-        user = dict(data.get("u") or {}) if isinstance(data.get("u"), dict) else {}
-        session.update(
-            {
-                "account_email": str(user.get("e") or user.get("email") or session.get("account_email") or "Connected"),
-                "account_uid": str(user.get("i") or user.get("uid") or session.get("account_uid") or ""),
-            }
-        )
-        _merge_plan_state_local(session=session, data=data, canonical=canonical, save_json=save_json, session_file=session_file)
-        return True, "Control Tower session refreshed."
-
-    def _ensure_access(
-        *,
-        session_file,
-        hub_url: str,
-        load_json: JsonLoader,
-        save_json: JsonSaver,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        clear_account_session: Callable[[], None],
-    ) -> tuple[bool, str]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token:
-            return False, "Connect a Control Tower account first."
-        status, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_CLAIM,
-            auth_token=auth_token,
-        )
-        if status >= 400 or not body.get("ok"):
-            if status == 401:
-                clear_account_session()
-            return False, str(body.get("error") or "Prompt access could not be verified.")
-        data = dict(body.get("d") or {}) if isinstance(body.get("d"), dict) else {}
-        _merge_plan_state_local(session=session, data=data, canonical=canonical, save_json=save_json, session_file=session_file)
-        if not bool(data.get("a")):
-            return False, str(data.get("m") or "Prompt access could not be verified.")
-        remaining = data.get("r")
-        if remaining is None:
-            return True, "Prompt access granted."
-        return True, f"Prompt access granted. {remaining} free prompt(s) remaining."
-
-    def _prepare_task(
-        *,
-        task_id: str,
-        session_id: str,
-        goal: str,
-        requested_model: str,
-        image: dict[str, Any] | None,
-        max_budget_usd: float,
-        session_file,
-        hub_url: str,
-        load_json: JsonLoader,
-        save_json: JsonSaver,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        clear_account_session: Callable[[], None],
-        device: dict[str, str],
-        runtime: dict[str, str],
-        account_uid: str,
-        active_app: str = "Terminal Aria",
-        local_time: str = "",
-    ) -> tuple[bool, dict[str, Any]]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token:
-            return False, {"message": "Connect a Control Tower account first.", "taskId": task_id, "sessionId": session_id}
-        task_model = str(requested_model or "").strip() or str(runtime.get("model") or "gpt-5.4")
-        status, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_PREPARE,
-            auth_token=auth_token,
-            payload={
-                "t": str(task_id or "").strip(),
-                "s": str(session_id or "").strip(),
-                "g": str(goal or "").strip(),
-                "x": task_model,
-                "i": image if isinstance(image, dict) else None,
-                "b": float(max_budget_usd or 0.0),
-                "d": str(device.get("device_id") or ""),
-                "h": str(device.get("machine_uid") or ""),
-                "n": str(device.get("device_name") or "Aria VM"),
-                "m": task_model,
-                "a": str(active_app or "Terminal Aria"),
-                "z": str(local_time or ""),
-                "q": str(account_uid or ""),
-            },
-        )
-        if status >= 400 or not body.get("ok"):
-            if status == 401:
-                clear_account_session()
-            return False, {"message": str(body.get("error") or "Remote task access denied."), "taskId": task_id, "sessionId": session_id}
-        data = dict(body.get("d") or {}) if isinstance(body.get("d"), dict) else {}
-        _merge_plan_state_local(session=session, data=data, canonical=canonical, save_json=save_json, session_file=session_file)
-        if not bool(data.get("a")):
-            return False, {"message": str(data.get("m") or "Remote task access denied."), "taskId": task_id, "sessionId": session_id}
-        envelope = data.get("x") if isinstance(data.get("x"), dict) else {}
-        return True, dict(envelope or {})
-
-    def _fetch_realtime_token(
-        *,
-        kind: str,
-        session_file,
-        hub_url: str,
-        load_json: JsonLoader,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        clear_account_session: Callable[[], None],
-        device: dict[str, str],
-    ) -> tuple[bool, dict[str, Any]]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token:
-            return False, {"message": "Connect a Control Tower account first."}
-        status, body, _cookie = http_json(
-            f"{canonical}/api/runtime/realtime-token",
-            method="POST",
-            auth_token=auth_token,
-            payload={
-                "kind": "host" if str(kind or "").strip().lower() == "host" else "device",
-                "deviceId": str(device.get("device_id") or ""),
-                "machineUid": str(device.get("machine_uid") or ""),
-                "deviceName": str(device.get("device_name") or "Aria VM"),
-            },
-        )
-        if status >= 400 or not body.get("ok"):
-            if status == 401:
-                clear_account_session()
-            return False, {"message": str(body.get("error") or "Realtime token request failed.")}
-        return True, {
-            "token": str(body.get("token") or ""),
-            "uid": str(body.get("uid") or session.get("account_uid") or ""),
-            "device_id": str(body.get("deviceId") or device.get("device_id") or ""),
-            "machine_uid": str(body.get("machineUid") or device.get("machine_uid") or ""),
-            "device_name": str(body.get("deviceName") or device.get("device_name") or "Aria VM"),
-            "kind": str(body.get("kind") or kind or "device"),
-        }
-
-    def _sync_device(
-        *,
-        current_task_id: str,
-        vm_status: str,
-        remote_enabled: bool,
-        session_file,
-        hub_url: str,
-        load_json: JsonLoader,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        clear_account_session: Callable[[], None],
-        device: dict[str, str],
-    ) -> tuple[bool, dict[str, Any]]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token or not str(session.get("account_uid") or "").strip():
-            return False, {"message": "No linked Control Tower session."}
-        status, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_DEVICE,
-            auth_token=auth_token,
-            payload={
-                "d": str(device.get("device_id") or ""),
-                "h": str(device.get("machine_uid") or ""),
-                "n": str(device.get("device_name") or "Aria VM"),
-                "s": "gtk_terminal",
-                "t": str(current_task_id or "").strip(),
-                "v": str(vm_status or "ready").strip() or "ready",
-                "r": bool(remote_enabled),
-                "c": {"remoteTerminal": True, "computerUse": True, "vmTools": True},
-            },
-        )
-        if status >= 400 or not body.get("ok"):
-            if status == 401:
-                clear_account_session()
-            return False, {"message": str(body.get("error") or "Remote device sync failed.")}
-        data = body.get("d") if isinstance(body.get("d"), dict) else {}
-        return True, dict(data or {})
-
-    def _sync_task(
-        *,
-        task_id: str,
-        status: str,
-        session_id: str,
-        latest_summary: str,
-        latest_result: str,
-        error: str,
-        spent_usd: float | None,
-        usage: dict[str, Any] | None,
-        event_text: str,
-        event_kind: str,
-        ack_message_ids: list[str] | None,
-        latest_screenshot_data_url: str,
-        latest_screenshot_captured_at: str,
-        session_file,
-        hub_url: str,
-        load_json: JsonLoader,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        http_upload_binary: HttpUploadBinary,
-        decode_data_url: Callable[[str], tuple[str, bytes]],
-        clear_account_session: Callable[[], None],
-    ) -> tuple[bool, dict[str, Any]]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token:
-            return False, {"message": "No local Control Tower session found."}
-        payload: dict[str, Any] = {}
-        if status:
-            payload["v"] = str(status).strip()
-        if session_id:
-            payload["s"] = str(session_id).strip()
-        if latest_summary:
-            payload["y"] = str(latest_summary).strip()
-        if latest_result:
-            payload["r"] = str(latest_result).strip()
-        if error:
-            payload["e"] = str(error).strip()
-        if spent_usd is not None:
-            payload["$"] = float(spent_usd)
-        if isinstance(usage, dict) and usage:
-            payload["u"] = dict(usage)
-        if event_text:
-            payload["x"] = str(event_text).strip()
-        if event_kind:
-            payload["k"] = str(event_kind).strip()
-        if ack_message_ids:
-            payload["a"] = [str(value).strip() for value in ack_message_ids if str(value).strip()]
-        if latest_screenshot_captured_at:
-            payload["z"] = str(latest_screenshot_captured_at).strip()
-        if latest_screenshot_data_url:
-            try:
-                content_type, binary = decode_data_url(latest_screenshot_data_url)
-                ticket_status, ticket_body, _cookie = _runtime_call_local(
-                    canonical=canonical,
-                    http_json=http_json,
-                    op=_OP_SCREENSHOT,
-                    auth_token=auth_token,
-                    payload={"t": str(task_id).strip(), "c": content_type},
-                )
-                ticket = dict(ticket_body.get("d") or {}) if isinstance(ticket_body, dict) else {}
-                upload_url = str(ticket.get("u") or "").strip()
-                upload_headers = dict(ticket.get("h") or {}) if isinstance(ticket.get("h"), dict) else {}
-                if ticket_status < 400 and upload_url:
-                    upload_status, _upload_body = http_upload_binary(
-                        upload_url,
-                        method="PUT",
-                        data=binary,
-                        headers={str(key): str(value) for key, value in upload_headers.items() if str(key).strip()},
-                    )
-                    if 200 <= upload_status < 300:
-                        payload["i"] = str(ticket.get("r") or "").strip()
-                        payload["p"] = str(ticket.get("p") or "").strip()
-                    else:
-                        return False, {"message": f"Remote screenshot upload failed ({upload_status})."}
-                else:
-                    return False, {"message": str(ticket_body.get("error") or "Remote screenshot ticket request failed.")}
-            except Exception as exc:
-                return False, {"message": f"Remote screenshot upload failed: {exc}"}
-        status_code, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_SYNC,
-            auth_token=auth_token,
-            payload={"t": str(task_id).strip(), "p": payload},
-        )
-        if status_code >= 400 or not body.get("ok"):
-            if status_code == 401:
-                clear_account_session()
-            return False, {"message": str(body.get("error") or "Remote task sync failed.")}
-        data = dict(body.get("d") or {}) if isinstance(body.get("d"), dict) else {}
-        return True, dict(data.get("t") or {})
-
-    def _report_usage(
-        *,
-        payload: dict[str, Any],
-        session_file,
-        hub_url: str,
-        load_json: JsonLoader,
-        canonical_hub_url: Callable[[str | None], str],
-        http_json: HttpJson,
-        clear_account_session: Callable[[], None],
-    ) -> tuple[bool, str]:
-        session = load_json(session_file)
-        canonical = canonical_hub_url(session.get("hub_url") or hub_url)
-        auth_token = str(session.get("auth_token") or "").strip()
-        if not auth_token:
-            return False, "No local Control Tower session found."
-        status, body, _cookie = _runtime_call_local(
-            canonical=canonical,
-            http_json=http_json,
-            op=_OP_USAGE,
-            auth_token=auth_token,
-            payload={"p": payload},
-        )
-        if status >= 400 or not body.get("ok"):
-            if status == 401:
-                clear_account_session()
-            return False, str(body.get("error") or "Task usage could not be reported.")
-        data = dict(body.get("d") or {}) if isinstance(body.get("d"), dict) else {}
-        return True, str(data.get("m") or "Task usage reported.")
+from .bootstrap import default_model_api
 
 
 def _legacy_name(*parts: str) -> str:
@@ -523,9 +48,6 @@ STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "
 BACKEND_PID_PATH = STATE_DIR / "backend.pid"
 BACKEND_LOG_PATH = STATE_DIR / "backend.log"
 CLIENT_UPDATE_DIR = STATE_DIR / "client-update"
-HUB_URL = local_hub_url()
-PUBLIC_HUB_URL = public_hub_url()
-DEFAULT_REMOTE_URL = default_remote_ws()
 CLIENT_INSTALL_DIR = Path(os.environ.get("ARIA_CLIENT_DIR") or "/opt/aria-client")
 PACKAGED_APP_DIR = CLIENT_INSTALL_DIR / "share" / "AriaApp"
 DEFAULT_APP_DIR = Path.home() / "Desktop" / "AriaApp"
@@ -1120,7 +642,7 @@ def _extract_memory_context(path: Path, user_prompt: str) -> str:
             include_archive=include_summaries,
             token_budget=MEMORY_MAX_PROMPT_TOKENS,
         )
-    runtime = RuntimeStore.remote_openai_runtime()
+    runtime = RuntimeStore.openai_runtime()
     keywords = _memory_keywords(user_prompt)
     selected: list[str] = []
     selected.extend(line.strip() for line in _memory_section_lines(sections, "User Preferences"))
@@ -1920,14 +1442,6 @@ def _save_session_json(payload: dict[str, Any]) -> None:
             pass
 
 
-def _load_account_payload(_path=None) -> dict[str, Any]:
-    return _load_session_json()
-
-
-def _save_account_payload(_path, payload: dict[str, Any]) -> None:
-    _save_session_json(payload)
-
-
 def _split_secret_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
     sensitive = {}
     plain = dict(payload or {})
@@ -1967,96 +1481,6 @@ def _migrate_sensitive_fields_from_json() -> None:
             changed = True
     if changed:
         _save_json(SECRETS_FILE, payload)
-
-
-def _extract_auth_token(headers) -> str | None:
-    values = []
-    get_all = getattr(headers, "get_all", None)
-    if callable(get_all):
-        values = get_all("Set-Cookie") or []
-    else:
-        single = headers.get("Set-Cookie")
-        if single:
-            values = [single]
-    for item in values:
-        cookie = SimpleCookie()
-        try:
-            cookie.load(item)
-        except Exception:
-            continue
-        morsel = cookie.get("aria_session")
-        if morsel is not None:
-            return morsel.value
-    return None
-
-
-def _http_json(
-    url: str,
-    *,
-    method: str = "GET",
-    payload: dict[str, Any] | None = None,
-    auth_token: str | None = None,
-) -> tuple[int, dict[str, Any], str | None]:
-    data = None
-    headers = {"Accept": "application/json"}
-    release = _client_release_info()
-    headers["X-Aria-Client-Version"] = str(release.get("version") or "dev")
-    headers["X-Aria-Client-Build"] = str(int(release.get("build") or 0))
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    if auth_token:
-        headers["Cookie"] = f"aria_session={auth_token}"
-
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            raw = response.read().decode("utf-8", errors="replace")
-            body = json.loads(raw or "{}")
-            _apply_update_gate_from_body(body, clear_on_success=False)
-            return response.status, body, _extract_auth_token(response.headers)
-    except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        try:
-            body = json.loads(raw or "{}")
-        except Exception:
-            body = {"error": raw or f"HTTP {exc.code}"}
-        _apply_update_gate_from_body(body, clear_on_success=False)
-        return exc.code, body, _extract_auth_token(exc.headers)
-
-
-def _http_upload_binary(
-    url: str,
-    *,
-    method: str = "PUT",
-    data: bytes,
-    headers: dict[str, str] | None = None,
-) -> tuple[int, str]:
-    request = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.status, response.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8", errors="replace")
-
-
-def _decode_data_url(data_url: str) -> tuple[str, bytes]:
-    value = str(data_url or "").strip()
-    match = re.match(r"^data:([^;]+);base64,(.+)$", value)
-    if not match:
-        raise ValueError("Invalid screenshot data URL.")
-    return str(match.group(1) or "image/png").strip() or "image/png", base64.b64decode(match.group(2) or "")
-
-
-def _canonical_hub_url(url: str | None) -> str:
-    raw = str(url or "").strip().rstrip("/")
-    if not raw:
-        return PUBLIC_HUB_URL
-    parsed = urlparse(raw)
-    host = (parsed.hostname or "").strip().lower()
-    if host in {"127.0.0.1", "localhost", "10.0.2.2"}:
-        return PUBLIC_HUB_URL
-    return raw
 
 
 def load_runtime_config() -> dict[str, Any]:
@@ -2181,7 +1605,7 @@ class RuntimeStore:
         secrets = self.user_secrets()
         config = load_runtime_config()
         device = self._device_identity()
-        runtime = self.remote_openai_runtime()
+        runtime = self.openai_runtime()
         release = _client_release_info()
         api_key_ready = bool(str(os.environ.get("OPENAI_API_KEY") or secrets.get("openai_api_key") or "").strip())
         return RuntimeState(
@@ -2423,7 +1847,7 @@ class RuntimeStore:
         result_summary: str,
         transcript_messages: list[Any] | None = None,
     ) -> dict[str, Any]:
-        runtime = RuntimeStore.remote_openai_runtime()
+        runtime = RuntimeStore.openai_runtime()
         local_preference_lines = _extract_durable_user_preference_lines(goal, transcript_messages)
         if not str(runtime.get("api_key") or "").strip():
             preference_changed = _append_user_preference_lines(local_preference_lines)
@@ -2602,39 +2026,13 @@ class RuntimeStore:
         image: dict[str, Any] | None = None,
         max_budget_usd: float = 0.0,
     ) -> tuple[bool, dict[str, Any]]:
-        return _prepare_task(
-            task_id=str(task_id or "").strip(),
-            session_id=str(session_id or "").strip(),
-            goal=str(goal or "").strip(),
-            requested_model=str(requested_model or "").strip(),
-            image=image if isinstance(image, dict) else None,
-            max_budget_usd=float(max_budget_usd or 0.0),
-            session_file=SESSION_FILE,
-            hub_url=HUB_URL,
-            load_json=_load_account_payload,
-            save_json=_save_account_payload,
-            canonical_hub_url=_canonical_hub_url,
-            http_json=_http_json,
-            clear_account_session=RuntimeStore.clear_account_session,
-            device=RuntimeStore._device_identity(),
-            runtime=RuntimeStore.remote_openai_runtime(),
-            account_uid=str(RuntimeStore().read().account_uid or ""),
-            active_app="Terminal Aria",
-            local_time=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        )
+        del task_id, session_id, goal, requested_model, image, max_budget_usd
+        return False, {"message": "Distributed task preparation is disabled in this local-only AriaOS build."}
 
     @staticmethod
     def fetch_realtime_token(*, kind: str = "device") -> tuple[bool, dict[str, Any]]:
-        return _fetch_realtime_token(
-            kind=str(kind or "device").strip(),
-            session_file=SESSION_FILE,
-            hub_url=HUB_URL,
-            load_json=_load_account_payload,
-            canonical_hub_url=_canonical_hub_url,
-            http_json=_http_json,
-            clear_account_session=RuntimeStore.clear_account_session,
-            device=RuntimeStore._device_identity(),
-        )
+        del kind
+        return False, {"message": "Realtime control tokens are disabled in this local-only AriaOS build."}
 
     @staticmethod
     def sync_device(
@@ -2643,18 +2041,8 @@ class RuntimeStore:
         vm_status: str = "ready",
         remote_enabled: bool = True,
     ) -> tuple[bool, dict[str, Any]]:
-        return _sync_device(
-            current_task_id=str(current_task_id or "").strip(),
-            vm_status=str(vm_status or "ready").strip() or "ready",
-            remote_enabled=bool(remote_enabled),
-            session_file=SESSION_FILE,
-            hub_url=HUB_URL,
-            load_json=_load_account_payload,
-            canonical_hub_url=_canonical_hub_url,
-            http_json=_http_json,
-            clear_account_session=RuntimeStore.clear_account_session,
-            device=RuntimeStore._device_identity(),
-        )
+        del current_task_id, vm_status, remote_enabled
+        return True, {"message": "Local-only build: device state stays inside the VM."}
 
     @staticmethod
     def sync_task(
@@ -2673,41 +2061,27 @@ class RuntimeStore:
         latest_screenshot_data_url: str = "",
         latest_screenshot_captured_at: str = "",
     ) -> tuple[bool, dict[str, Any]]:
-        return _sync_task(
-            task_id=task_id,
-            status=status,
-            session_id=session_id,
-            latest_summary=latest_summary,
-            latest_result=latest_result,
-            error=error,
-            spent_usd=spent_usd,
-            usage=usage if isinstance(usage, dict) else None,
-            event_text=event_text,
-            event_kind=event_kind,
-            ack_message_ids=ack_message_ids,
-            latest_screenshot_data_url=latest_screenshot_data_url,
-            latest_screenshot_captured_at=latest_screenshot_captured_at,
-            session_file=SESSION_FILE,
-            hub_url=HUB_URL,
-            load_json=_load_account_payload,
-            canonical_hub_url=_canonical_hub_url,
-            http_json=_http_json,
-            http_upload_binary=_http_upload_binary,
-            decode_data_url=_decode_data_url,
-            clear_account_session=RuntimeStore.clear_account_session,
+        del (
+            task_id,
+            status,
+            session_id,
+            latest_summary,
+            latest_result,
+            error,
+            spent_usd,
+            usage,
+            event_text,
+            event_kind,
+            ack_message_ids,
+            latest_screenshot_data_url,
+            latest_screenshot_captured_at,
         )
+        return True, {"message": "Local-only build: task sync is disabled."}
 
     @staticmethod
     def report_usage(payload: dict[str, Any]) -> tuple[bool, str]:
-        return _report_usage(
-            payload=payload,
-            session_file=SESSION_FILE,
-            hub_url=HUB_URL,
-            load_json=_load_account_payload,
-            canonical_hub_url=_canonical_hub_url,
-            http_json=_http_json,
-            clear_account_session=RuntimeStore.clear_account_session,
-        )
+        del payload
+        return True, "Usage stays local in this AriaOS build."
 
     @staticmethod
     def consume_activation_notice() -> str | None:
@@ -2733,7 +2107,7 @@ class RuntimeStore:
         _save_json(SECRETS_FILE, plain)
 
     @staticmethod
-    def remote_openai_runtime() -> dict[str, str]:
+    def openai_runtime() -> dict[str, str]:
         secrets = RuntimeStore.user_secrets()
         return {
             "api_key": str(os.environ.get("OPENAI_API_KEY") or secrets.get("openai_api_key") or "").strip(),
@@ -2765,7 +2139,7 @@ class RuntimeStore:
 
     @staticmethod
     def save_openai_model(model: str) -> bool:
-        runtime = RuntimeStore.remote_openai_runtime()
+        runtime = RuntimeStore.openai_runtime()
         return RuntimeStore.save_openai_settings(
             api_key=str(runtime.get("api_key") or ""),
             base_url=str(runtime.get("base_url") or default_model_api()),

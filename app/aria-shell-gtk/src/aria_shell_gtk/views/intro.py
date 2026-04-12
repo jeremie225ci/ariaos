@@ -28,7 +28,7 @@ class IntroView(Gtk.Box):
             "points": (
                 "OpenAI key stored locally",
                 "GPT-5.4 and GPT-5.4 mini supported",
-                "No Control Tower dependency",
+                "No remote server dependency",
             ),
         },
         {

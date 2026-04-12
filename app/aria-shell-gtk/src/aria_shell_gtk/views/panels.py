@@ -147,7 +147,7 @@ def show_model_dialog(
     on_success,
 ):
     root = parent.get_root()
-    runtime = service.remote_openai_runtime()
+    runtime = service.openai_runtime()
     current_model = str(runtime.get("model") or "gpt-5.4")
     win = Gtk.Window(title="Choose model")
     if isinstance(root, Gtk.Window):

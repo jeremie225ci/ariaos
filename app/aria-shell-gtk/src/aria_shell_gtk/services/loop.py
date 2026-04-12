@@ -142,7 +142,7 @@ class LocalLoop(threading.Thread):
                 self.emit({"type": "proactive", "data": data.get("data", {})})
         return None
 
-    async def _reset_remote_session(self, ws, session_id: str, timeout: float = 8.0) -> bool:
+    async def _reset_local_session(self, ws, session_id: str, timeout: float = 8.0) -> bool:
         request_id = f"reset-{uuid.uuid4().hex[:8]}"
         await self._send_json(
             ws,
@@ -270,7 +270,7 @@ class LocalLoop(threading.Thread):
                             return
                         if task.get("type") == "reset_session":
                             session_id = task["session_id"]
-                            await self._reset_remote_session(ws, session_id, timeout=4.0)
+                            await self._reset_local_session(ws, session_id, timeout=4.0)
                             continue
                         if task.get("type") == "generate_title":
                             await self._request_session_title(ws, task["session_id"], str(task.get("text") or ""), timeout=6.0)

@@ -287,12 +287,12 @@ class VoiceClient:
             auth_token = _load_auth_token()
             if not auth_token:
                 _debug_log("run_forever abort: auth token missing")
-                self._emit_error("Voice mode is unavailable until this VM is linked to a Control Tower account.")
+                self._emit_error("Voice mode is disabled in this local-only AriaOS build.")
                 return
             ws_url = _derive_voice_ws_url(self.service)
             if not ws_url:
                 _debug_log("run_forever abort: ws_url missing")
-                self._emit_error("Voice mode is unavailable because no server websocket URL is configured.")
+                self._emit_error("Voice mode is disabled in this local-only AriaOS build.")
                 return
             try:
                 _debug_log(f"connecting to {ws_url}")
