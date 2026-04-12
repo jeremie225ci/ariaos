@@ -318,12 +318,21 @@ class VoiceClient:
                 )
             )
             _debug_log("hello sent")
-            raw_ready = await asyncio.wait_for(websocket.recv(), timeout=VOICE_CONNECT_TIMEOUT)
-            ready = json.loads(raw_ready)
-            if str(ready.get("type") or "") == "error":
-                raise RuntimeError(str(ready.get("message") or "voice handshake failed"))
-            if str(ready.get("type") or "") != "ready":
-                raise RuntimeError("voice handshake failed")
+            # Some local voice server builds emit an initial status frame before
+            # the explicit ready frame, so the client tolerates status messages
+            # until the handshake is complete.
+            while True:
+                raw_ready = await asyncio.wait_for(websocket.recv(), timeout=VOICE_CONNECT_TIMEOUT)
+                ready = json.loads(raw_ready)
+                ready_type = str(ready.get("type") or "").strip()
+                if ready_type == "status":
+                    self._emit_state(str(ready.get("state") or "thinking"))
+                    continue
+                if ready_type == "error":
+                    raise RuntimeError(str(ready.get("message") or "voice handshake failed"))
+                if ready_type != "ready":
+                    raise RuntimeError("voice handshake failed")
+                break
 
             self._connected = True
             _debug_log("handshake ready")
