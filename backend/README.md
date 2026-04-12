@@ -2,6 +2,9 @@
 
 This directory contains the readable local backend used by AriaOS inside the VM.
 
+- `backend/prompts.py`
+  Visible prompt definitions for the local backend, including the main system prompt.
+
 - `backend/brain.py`
   Shared OpenAI runtime helpers. It loads the local key from `~/.config/ariaos/user_secrets.json`
   first and falls back to the legacy local secrets file when needed.

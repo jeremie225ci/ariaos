@@ -31,6 +31,7 @@ If onboarding is not complete and no key is present, the shell starts in `intro`
 Relevant file:
 
 - `vm/guest/bin/run_aria_shell_gtk.sh`
+- `~/.config/ariaos/user_secrets.json`
 
 ## Runtime prerequisites inside the VM
 

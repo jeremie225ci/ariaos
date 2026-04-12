@@ -63,7 +63,7 @@ The public AriaOS flow is now **local-only**:
 
 Main local files used by AriaOS:
 
-- `~/.config/ariaos/local_agent_secrets.json` - local OpenAI key and secrets
+- `~/.config/ariaos/user_secrets.json` - local OpenAI key and secrets
 - `~/.config/ariaos/runtime_config.json` - runtime configuration
 - `~/.local/state/ariaos/onboarding_state.json` - onboarding state
 - `~/.ariaos/data/` - local history and data
@@ -73,6 +73,7 @@ Main local files used by AriaOS:
 ```text
 ariaos/
 ├── README.md
+├── backend/                      # Local backend runtime, prompts, and voice server
 ├── app/
 │   └── aria-shell-gtk/          # GTK shell, onboarding, home, terminal
 ├── vm/
