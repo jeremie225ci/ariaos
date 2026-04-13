@@ -1291,8 +1291,6 @@ class ProfileManager:
         self.profile_dirs = [p for p in [
             env_dir,
             str(Path(__file__).resolve().parent / "profiles"),
-            "/home/jeremie/ariaos/profiles",
-            "/home/jeremie/Ariaos/vm_patches/profiles",
         ] if p]
         self.profiles: List[Dict[str, Any]] = self._load_profiles()
 
