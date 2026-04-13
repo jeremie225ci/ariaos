@@ -15,7 +15,7 @@ The project was initially created to satisfy my curiosity. I’ve always wondere
 - 💻 **Terminal Aria** - A work surface centered on agent-driven execution
 - 🔐 **OpenAI BYOK** - Users provide their own OpenAI API key on first launch
 - 🗂️ **Local Workspace** - Files, history, and memory stay inside the VM
-- 🧠 **Long-term Memory** - Preferences, playbooks, and useful summaries are stored locally
+- 🧠 **Visible Local Brain** - The repo now exposes the local VM brain, its prompts, and its agentic loop
 - 🖥️ **Integrated Desktop** - Browser, files, and shell run inside the same machine
 
 ## ⚡ Quick Start
@@ -73,7 +73,8 @@ Main local files used by AriaOS:
 ```text
 ariaos/
 ├── README.md
-├── backend/                      # Local backend runtime, prompts, and voice server
+├── backend/                      # Local backend runtime, visible brain, prompts, and voice server
+├── aria/                         # Local input backend package used by the brain
 ├── app/
 │   └── aria-shell-gtk/          # GTK shell, onboarding, home, terminal
 ├── vm/

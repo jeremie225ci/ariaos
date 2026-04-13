@@ -18,16 +18,29 @@ This document explains the active public architecture of AriaOS.
 - `backend/voice_server.py`
   Local voice runtime on `127.0.0.1:8081`.
 
+- `backend/agentic_runtime.py`
+  Visible VM-style local brain with the multi-step planner, computer-use loop,
+  scheduling actions, verification rules, and local tool execution.
+
 - `backend/loopagentic.py`
-  Readable local orchestration loop for one task request.
+  Thin compatibility bridge that feeds one shell request into the visible local
+  agentic brain and returns the task result through the websocket protocol.
 
 - `backend/brain.py`
   Shared OpenAI helpers for chat, speech-to-text, text-to-speech, and runtime loading.
 
+- `backend/brain_config.py`
+  Local-first config layer for the imported VM brain.
+
+- `aria/kernel_input.py`
+  Local input backend package used by the VM brain when probing kernel input or
+  falling back to xdotool.
+
 ## Prompt locations
 
 - `backend/prompts.py`
-  Main system prompt for the local backend.
+  Main system prompts for the local backend, including the direct-answer prompt
+  and the full visible VM agentic prompt.
 
 - `app/aria-shell-gtk/src/aria_shell_gtk/services/prompts.py`
   Prompt used by the shell to decide long-term memory updates.
@@ -41,7 +54,10 @@ This document explains the active public architecture of AriaOS.
 5. `RuntimeStore` ensures the local text backend is running.
 6. If voice mode is enabled, `RuntimeStore` also ensures the local voice backend is running.
 7. Terminal Aria sends prompts over the local websocket protocol.
-8. The backend keeps short local session memory and calls OpenAI directly from the VM.
+8. `backend/loopagentic.py` creates a local `AgenticLoop` task runtime.
+9. `backend/agentic_runtime.py` runs the VM-style planner, computer-use logic,
+   verification rules, and local tools directly inside the VM.
+10. The backend calls OpenAI directly from the VM using the user-provided key.
 
 ## Main state files
 
@@ -62,4 +78,6 @@ This document explains the active public architecture of AriaOS.
 Older private VM builds used obfuscated or less explicit names such as `kernel`
 or `engine`. The public repository now uses readable names like `brain.py` and
 `loopagentic.py`, but these are meant to reflect the same local responsibilities
-in a clearer way.
+in a clearer way. The public repository now also carries a visible copy of the
+VM brain in `backend/agentic_runtime.py` instead of hiding that logic behind the
+packaged VM only.
