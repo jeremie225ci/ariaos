@@ -25,8 +25,8 @@ from gi.repository import GLib, Gtk, Pango
 from ..services.loop import LocalLoop
 from ..services.history import HistoryService, SessionMessage, SessionSummary
 from ..services.core import RuntimeState, RuntimeStore, SUPPORTED_OPENAI_VOICE_NAMES, SUPPORTED_VOICE_LANGUAGES
-from ..services.voice_client import VoiceClient, voice_environment_error
-from .panels import show_model_dialog, show_key_dialog
+from ..services.voice_client import VoiceClient
+from .panels import show_access_dialog, show_model_dialog, show_key_dialog
 from .voice_overlay import VoiceOverlay
 
 DEBUG_PREFIXES = (
@@ -422,7 +422,7 @@ def _should_record_memory_summary(text: str) -> bool:
         "could not",
         "error:",
         "connection issue",
-        "connect your openai key",
+        "connect a control tower account first",
         "update required",
     )
     return not any(marker in cleaned for marker in blocked_markers)
@@ -444,6 +444,24 @@ def _looks_like_smalltalk(text: str) -> bool:
         "ca va",
     )
     return any(marker in lowered for marker in smalltalk_markers) and len(lowered) < 80
+
+
+def _is_useful_memory_candidate(goal: str, text: str, *, has_remote_task: bool, has_details: bool) -> bool:
+    normalized_goal = _normalize_display_text(goal).strip()
+    normalized_text = _normalize_display_text(text).strip()
+    if not normalized_goal or not normalized_text:
+        return False
+    if not has_remote_task and not has_details:
+        return False
+    if len(normalized_goal) < 12 or len(normalized_text) < 24:
+        return False
+    if _looks_like_smalltalk(normalized_goal) or _looks_like_smalltalk(normalized_text):
+        return False
+    packed_markers = ("M:", "\nM:", "L:", "\nL:", "Q:", "\nQ:", "N:", "\nN:", "Verified playbooks:", "Recent useful task summaries:")
+    if any(marker in normalized_text for marker in packed_markers):
+        return False
+    return _should_record_memory_summary(normalized_text)
+
 
 
 def _preview_text(text: str, role: str = "assistant") -> str:
@@ -517,8 +535,17 @@ class ConsoleView(Gtk.Box):
         self.backend_connected = False
         self._task_started_at = 0.0
         self._last_task_event_at = 0.0
+        self._awaiting_remote_accept = False
         self._activation_notice_shown_for: str | None = None
+        self._active_remote_task_id: str | None = None
+        self._active_remote_budget_usd = 0.0
+        self._active_remote_paused = False
         self._active_goal_text = ""
+        self._last_remote_progress_sync_at = 0.0
+        self._last_remote_screenshot_sync_at = 0.0
+        self._remote_screenshot_sync_inflight = False
+        self._pending_remote_task: dict[str, object] | None = None
+        self._seen_remote_message_ids: set[str] = set()
         self._update_in_progress = False
         self._update_check_inflight = False
         self._update_password_window = None
@@ -567,6 +594,8 @@ class ConsoleView(Gtk.Box):
         return "Connect your local OpenAI key to continue using Terminal Aria."
 
     def _access_block_message(self) -> str:
+        if self.state.update_required:
+            return self._update_required_message()
         if not self.state.api_key_ready:
             return self._access_required_message()
         if not self.backend_connected:
@@ -601,16 +630,292 @@ class ConsoleView(Gtk.Box):
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    def remote_presence_state(self) -> tuple[str, str]:
+        if self.current_running and self._active_remote_task_id:
+            return self._active_remote_task_id, "paused" if self._active_remote_paused else "running"
+        if self.current_running:
+            return "", "busy"
+        return "", "ready"
+
+    def stop_active_remote_task(self) -> bool:
+        if not self.current_running or not self._active_remote_task_id:
+            return False
+        self._request_stop()
+        return True
+
+    def pause_active_remote_task(self) -> bool:
+        if not self.current_running or not self._active_remote_task_id or self._active_remote_paused:
+            self._log_debug(
+                "pause_active_remote_task skipped "
+                f"running={self.current_running} task={self._active_remote_task_id} paused={self._active_remote_paused}"
+            )
+            return False
+        if not hasattr(self.bridge, "request_pause") or not bool(self.bridge.request_pause()):
+            self._log_debug("pause_active_remote_task bridge rejected pause")
+            return False
+        self._log_debug(f"pause_active_remote_task task={self._active_remote_task_id}")
+        self._active_remote_paused = True
+        self._append_system_notice("Remote task paused.")
+        self._sync_remote_task_async(
+            status="paused",
+            latest_summary="Remote task paused from Control Tower.",
+            event_text="Remote task paused from Control Tower.",
+            event_kind="control",
+        )
+        self._publish_voice_snapshot()
+        self._sync_controls()
+        return True
+
+    def resume_active_remote_task(self) -> bool:
+        if not self.current_running or not self._active_remote_task_id or not self._active_remote_paused:
+            self._log_debug(
+                "resume_active_remote_task skipped "
+                f"running={self.current_running} task={self._active_remote_task_id} paused={self._active_remote_paused}"
+            )
+            return False
+        if not hasattr(self.bridge, "request_resume") or not bool(self.bridge.request_resume()):
+            self._log_debug("resume_active_remote_task bridge rejected resume")
+            return False
+        self._log_debug(f"resume_active_remote_task task={self._active_remote_task_id}")
+        self._active_remote_paused = False
+        self._append_system_notice("Remote task resumed.")
+        self._sync_remote_task_async(
+            status="running",
+            latest_summary="Remote task resumed from Control Tower.",
+            event_text="Remote task resumed from Control Tower.",
+            event_kind="control",
+        )
+        self._publish_voice_snapshot()
+        self._sync_controls()
+        return True
+
+    def handle_remote_task_messages(self, task_id: str, messages: list[dict[str, object]]) -> bool:
+        active_task_id = str(self._active_remote_task_id or "").strip()
+        if not active_task_id or active_task_id != str(task_id or "").strip() or not self.current_running:
+            return False
+        ack_ids: list[str] = []
+        for item in messages or []:
+            if not isinstance(item, dict):
+                continue
+            message_id = str(item.get("id") or "").strip()
+            text = str(item.get("text") or "").strip()
+            role = str(item.get("role") or "operator").strip() or "operator"
+            if not message_id or not text or message_id in self._seen_remote_message_ids:
+                continue
+            if not hasattr(self.bridge, "send_task_message"):
+                continue
+            if not bool(self.bridge.send_task_message(text, role=role, message_id=message_id)):
+                continue
+            self._seen_remote_message_ids.add(message_id)
+            ack_ids.append(message_id)
+            preview = _sanitize_terminal_result_text(text)[:220]
+            if preview:
+                self._append_system_notice(f"Remote operator: {preview}")
+        if ack_ids:
+            summary = f"Delivered {len(ack_ids)} remote operator instruction(s) to the running task."
+            self._sync_remote_task_async(
+                latest_summary=summary,
+                event_text=summary,
+                event_kind="control",
+                ack_message_ids=ack_ids,
+            )
+        return bool(ack_ids)
+
+    def _capture_remote_screenshot_preview(self) -> tuple[str, str]:
+        runtime = getattr(self.bridge, "runtime", None)
+        if runtime is None:
+            return "", ""
+        capture = getattr(runtime, "capture_screenshot", None)
+        if not callable(capture):
+            # The shipped bundle obfuscates runtime method names.
+            capture = getattr(runtime, "m1", None)
+        if not callable(capture):
+            return "", ""
+        ok, image_base64, mime, _detail = capture()
+        if not ok or not image_base64:
+            return "", ""
+        return self._prepare_remote_screenshot_preview(image_base64, mime)
+
+    def _prepare_remote_screenshot_preview(self, image_base64: str, mime: str) -> tuple[str, str]:
+        try:
+            raw = base64.b64decode(image_base64)
+        except Exception:
+            return "", ""
+        out_mime = mime or "image/png"
+        out_bytes = raw
+        if Image is not None:
+            try:
+                from io import BytesIO
+                with Image.open(BytesIO(raw)) as src:
+                    image = src.convert("RGB") if src.mode != "RGB" else src.copy()
+                    image.thumbnail((1280, 800))
+                    buffer = BytesIO()
+                    image.save(buffer, format="JPEG", quality=84, optimize=True)
+                    out_bytes = buffer.getvalue()
+                    out_mime = "image/jpeg"
+            except Exception:
+                out_bytes = raw
+        if len(out_bytes) > 900_000:
+            return "", ""
+        return f"data:{out_mime};base64,{base64.b64encode(out_bytes).decode('ascii')}", datetime.utcnow().isoformat() + "Z"
+
+    def _sync_remote_screenshot_async(self, *, minimum_interval: float = 4.0) -> None:
+        if not self._active_remote_task_id or not self.current_running or self._remote_screenshot_sync_inflight:
+            return
+        now = time.monotonic()
+        if now - self._last_remote_screenshot_sync_at < minimum_interval:
+            return
+        self._remote_screenshot_sync_inflight = True
+
+        def _worker() -> None:
+            try:
+                data_url, captured_at = self._capture_remote_screenshot_preview()
+                if not data_url:
+                    return
+                self._last_remote_screenshot_sync_at = time.monotonic()
+                ok, payload = self.service.sync_task(
+                    str(self._active_remote_task_id or ""),
+                    latest_screenshot_data_url=data_url,
+                    latest_screenshot_captured_at=captured_at,
+                )
+                if not ok:
+                    self._log_debug(
+                        f"remote_screenshot_sync_failed task={self._active_remote_task_id or '-'} "
+                        f"message={payload.get('message') if isinstance(payload, dict) else payload}"
+                    )
+            finally:
+                self._remote_screenshot_sync_inflight = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _sync_remote_screenshot_data_async(self, image_base64: str, mime: str) -> None:
+        if not self._active_remote_task_id or not self.current_running:
+            return
+
+        def _worker() -> None:
+            data_url, captured_at = self._prepare_remote_screenshot_preview(image_base64, mime)
+            if not data_url:
+                return
+            self._last_remote_screenshot_sync_at = time.monotonic()
+            ok, payload = self.service.sync_task(
+                str(self._active_remote_task_id or ""),
+                latest_screenshot_data_url=data_url,
+                latest_screenshot_captured_at=captured_at,
+            )
+            if not ok:
+                self._log_debug(
+                    f"remote_screenshot_sync_failed task={self._active_remote_task_id or '-'} "
+                    f"message={payload.get('message') if isinstance(payload, dict) else payload}"
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _sync_remote_task_async(
+        self,
+        *,
+        status: str = "",
+        latest_summary: str = "",
+        latest_result: str = "",
+        error: str = "",
+        spent_usd: float | None = None,
+        usage: dict | None = None,
+        event_text: str = "",
+        event_kind: str = "",
+        throttle_seconds: float = 0.0,
+        ack_message_ids: list[str] | None = None,
+        latest_screenshot_data_url: str = "",
+        latest_screenshot_captured_at: str = "",
+    ) -> None:
+        task_id = str(self._active_remote_task_id or "").strip()
+        if not task_id:
+            return
+        now = time.monotonic()
+        if throttle_seconds > 0 and now - self._last_remote_progress_sync_at < throttle_seconds:
+            return
+        if throttle_seconds > 0:
+            self._last_remote_progress_sync_at = now
+        session_id = str(self.selected_session_id or self.active_request_session_id or task_id)
+
+        def _worker() -> None:
+            ok, payload = self.service.sync_task(
+                task_id,
+                status=status,
+                session_id=session_id,
+                latest_summary=latest_summary,
+                latest_result=latest_result,
+                error=error,
+                spent_usd=spent_usd,
+                usage=usage,
+                event_text=event_text,
+                event_kind=event_kind,
+                ack_message_ids=ack_message_ids,
+                latest_screenshot_data_url=latest_screenshot_data_url,
+                latest_screenshot_captured_at=latest_screenshot_captured_at,
+            )
+            self._log_debug(
+                f"remote_task_sync task_id={task_id} ok={ok} status={status or '-'} "
+                f"summary_len={len(latest_summary)} event_kind={event_kind or '-'} "
+                f"message={payload.get('message') if isinstance(payload, dict) else payload}"
+            )
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _sync_remote_task_blocked_async(self, task_id: str, session_id: str, message: str) -> None:
+        blocked_task_id = str(task_id or "").strip()
+        if not blocked_task_id:
+            return
+
+        def _worker() -> None:
+            ok, payload = self.service.sync_task(
+                blocked_task_id,
+                status="failed",
+                session_id=str(session_id or blocked_task_id).strip(),
+                latest_summary=message,
+                error=message,
+                event_text=message,
+                event_kind="error",
+            )
+            self._log_debug(
+                f"remote_task_blocked task_id={blocked_task_id} ok={ok} "
+                f"message={payload.get('message') if isinstance(payload, dict) else payload}"
+            )
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    @staticmethod
+    def _remote_progress_summary(chunk: str) -> str:
+        cleaned = []
+        for raw_line in str(chunk or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("[LOG]"):
+                line = line[len("[LOG]"):].strip()
+            if not line:
+                continue
+            cleaned.append(line)
+        summary = _sanitize_terminal_result_text("\n".join(cleaned))
+        if not summary:
+            return ""
+        return summary[:280]
+
     def _submit_prompt_payload(
         self,
         raw: str,
         *,
         session_id: str | None = None,
         image: dict[str, str] | None = None,
+        external_task_id: str | None = None,
+        max_budget_usd: float | None = None,
         session_title: str | None = None,
         model: str | None = None,
     ) -> bool:
         self.state = self.service.read()
+        remote_mode = bool(self.state.remote_url.strip())
+        if self.state.update_required:
+            self.refresh_state(self.state)
+            self._append_system_notice(self._update_required_message())
+            return False
         if self.current_running:
             return False
         chosen_session_id = str(session_id or self.selected_session_id or "").strip()
@@ -621,18 +926,35 @@ class ConsoleView(Gtk.Box):
             return False
         self.selected_session_id = chosen_session_id
         self.history.create_session(chosen_session_id, session_title or "New Chat")
-        if not self.state.api_key_ready:
-            self._show_api_key_dialog()
+        if self.state.auth_ready:
+            self.service.refresh_access()
             self.state = self.service.read()
-            self._sync_controls()
+            if self.state.update_required:
+                self.refresh_state(self.state)
+                self._append_system_notice(self._update_required_message())
+                return False
+        if self.state.plan_status not in {"active", "trialing"}:
+            self.refresh_state(self.service.read())
+            self._append_system_notice(self._access_required_message())
+            return False
+        if not remote_mode:
+            allowed, message = self.service.ensure_access()
+            self.state = self.service.read()
+            if not allowed:
+                self.refresh_state(self.state)
+                self._append_system_notice(message)
+                return False
             if not self.state.api_key_ready:
-                return False
-        if not self.backend_connected:
-            self._ensure_backend_ready(force=True)
-            if not self.service.backend_ws_reachable():
-                self.refresh_state(self.service.read())
-                self._append_system_notice("Connection issue: the local runtime is not reachable.")
-                return False
+                self._show_api_key_dialog()
+                self.state = self.service.read()
+                self._sync_controls()
+                if not self.state.api_key_ready:
+                    return False
+            if not self.backend_connected:
+                self._ensure_backend_ready(force=True)
+                if not self.service.backend_ws_reachable():
+                    self.refresh_state(self.service.read())
+                    return False
 
         clean_prompt = str(raw or "").strip()
         if not clean_prompt:
@@ -651,20 +973,28 @@ class ConsoleView(Gtk.Box):
         self.current_running = True
         self._task_started_at = time.monotonic()
         self._last_task_event_at = self._task_started_at
+        self._awaiting_remote_accept = bool(remote_mode)
+        self._last_remote_progress_sync_at = 0.0
+        self._last_remote_screenshot_sync_at = 0.0
+        self._remote_screenshot_sync_inflight = False
+        self._active_remote_task_id = str(external_task_id or "").strip() or None
+        self._active_remote_budget_usd = float(max_budget_usd or 0.0)
+        self._active_remote_paused = False
+        self._seen_remote_message_ids = set()
         self._push_voice_snapshot(
-            status="running",
+            status="dispatching" if remote_mode else "running",
             session_id=chosen_session_id,
-            task_id=chosen_session_id,
+            task_id=str(external_task_id or chosen_session_id or "").strip(),
             goal=clean_prompt,
-            latest_summary="Task started.",
+            latest_summary="Task accepted and waiting for runtime execution." if remote_mode else "Task started.",
             latest_result="",
             latest_action="",
             latest_progress="",
             error="",
             paused=False,
-            supports_followups=False,
+            supports_followups=bool(remote_mode and hasattr(self.bridge, "send_task_message")),
         )
-        self._log_debug(f"send session={chosen_session_id} prompt_len={len(payload)}")
+        self._log_debug(f"send session={chosen_session_id} prompt_len={len(payload)} remote_task={self._active_remote_task_id or '-'}")
         self.refresh_state(self.state)
         self._append_streaming_placeholder()
         self._sync_controls()
@@ -673,6 +1003,8 @@ class ConsoleView(Gtk.Box):
                 chosen_session_id,
                 payload,
                 image=image,
+                task_id=external_task_id,
+                max_budget_usd=max_budget_usd,
                 model=model,
             )
         except Exception as exc:
@@ -680,6 +1012,37 @@ class ConsoleView(Gtk.Box):
             self._abort_current_task("Connection issue: the terminal failed to send the request to the local runtime.")
             return False
         return True
+
+    def launch_remote_task(self, task: dict[str, object]) -> bool:
+        task_id = str(task.get("id") or "").strip()
+        session_id = str(task.get("sessionId") or "").strip() or task_id
+        goal = str(task.get("goal") or "").strip()
+        if not task_id or not goal or self.current_running:
+            return False
+        title = str(task.get("title") or "").strip() or self._provisional_title(goal)
+        max_budget_usd = float(task.get("maxBudgetUsd") or 0.0)
+        model = str(task.get("model") or "").strip() or None
+        ok = self._submit_prompt_payload(
+            goal,
+            session_id=session_id,
+            external_task_id=task_id,
+            max_budget_usd=max_budget_usd,
+            session_title=title,
+            model=model,
+        )
+        if ok:
+            self._active_remote_paused = False
+            self._sync_remote_task_async(
+                status="dispatching",
+                latest_summary="Terminal Aria claimed the remote task on the device.",
+                event_text="Device claimed remote task and started Terminal Aria.",
+                event_kind="status",
+            )
+        else:
+            blocked_message = self._access_block_message()
+            if blocked_message:
+                self._sync_remote_task_blocked_async(task_id, session_id, blocked_message)
+        return ok
 
     def refresh_state(self, state: RuntimeState) -> None:
         previous_state = self.state
@@ -696,7 +1059,7 @@ class ConsoleView(Gtk.Box):
         self._render_session_list()
         self._render_messages()
         self.strip_model_button.set_label(f"Model: {state.openai_model.upper()}")
-        self.strip_key_button.set_visible(True)
+        self.strip_key_button.set_visible(not self._uses_remote_gateway())
         self._refresh_voice_name_button()
         self._refresh_voice_language_button()
         if self.voice_mode_enabled:
@@ -710,8 +1073,12 @@ class ConsoleView(Gtk.Box):
         self._maybe_show_activation_notice(previous_state, state)
 
     def prepare_for_display(self) -> None:
+        if self.state.auth_ready:
+            self.service.refresh_access()
+        self._refresh_update_status_async()
         self.refresh_state(self.service.read())
-        self._ensure_backend_ready()
+        if not self._uses_remote_gateway():
+            self._ensure_backend_ready()
         if self.selected_session_id and not self.current_running:
             self.bridge.reset_session(self.selected_session_id)
 
@@ -738,7 +1105,7 @@ class ConsoleView(Gtk.Box):
         sidebar.set_margin_start(10)
         sidebar.set_margin_end(0)
 
-        brand = Gtk.Label(label="ARIA COMMUNITY")
+        brand = Gtk.Label(label="ARIAOS")
         brand.add_css_class("brand-label")
         brand.set_halign(Gtk.Align.START)
         sidebar.append(brand)
@@ -841,20 +1208,17 @@ class ConsoleView(Gtk.Box):
         self.strip_voice_name_button = Gtk.Button(label="Voice: MARIN")
         self.strip_voice_name_button.add_css_class("dock-button")
         self.strip_voice_name_button.connect("clicked", lambda _btn: self._show_voice_name_dialog())
-        self.strip_voice_name_button.set_visible(True)
         strip_actions.append(self.strip_voice_name_button)
 
         self.strip_voice_language_button = Gtk.Button(label="Language: EN")
         self.strip_voice_language_button.add_css_class("dock-button")
         self.strip_voice_language_button.connect("clicked", lambda _btn: self._show_voice_language_dialog())
-        self.strip_voice_language_button.set_visible(True)
         strip_actions.append(self.strip_voice_language_button)
 
         self.strip_voice_button = Gtk.ToggleButton(label="Voice Mode")
         self.strip_voice_button.add_css_class("dock-button")
         self.strip_voice_button.add_css_class("voice-toggle-button")
         self._voice_toggle_handler_id = self.strip_voice_button.connect("toggled", self._on_voice_toggled)
-        self.strip_voice_button.set_visible(True)
         strip_actions.append(self.strip_voice_button)
 
         strip.append(strip_actions)
@@ -1223,35 +1587,32 @@ class ConsoleView(Gtk.Box):
         window.destroy()
 
     def _voice_runtime_allowed(self) -> tuple[bool, str]:
+        if self.state.update_required:
+            return False, self._update_required_message()
         if not self.state.api_key_ready:
-            return False, "Connect your OpenAI key before enabling Voice Mode."
-
-        environment_error = voice_environment_error()
-        if environment_error:
-            return False, environment_error
-
-        # Voice mode relies on the normal local task runtime plus the local
-        # voice websocket runtime. Both must be reachable before enabling it.
-        if not self.service.backend_ws_reachable():
-            self._ensure_backend_ready(force=True)
-            if not self.service.backend_ws_reachable():
-                return False, "The local Aria runtime is not reachable yet."
-
-        if not self.service.voice_ws_reachable():
-            if not self.service.restart_local_voice_backend():
-                return False, "The local voice runtime could not be started."
-
+            return False, "Connect your OpenAI key before enabling voice mode."
+        if not self.backend_connected:
+            if self._uses_remote_gateway():
+                return False, "Voice mode is unavailable until the remote link is reachable."
+            return False, "Voice mode is unavailable until the local runtime is reachable."
         return True, ""
 
     def _voice_supports_followups(self) -> bool:
-        return False
+        return bool(
+            self.current_running
+            and self._active_remote_task_id
+            and hasattr(self.bridge, "send_task_message")
+            and callable(getattr(self.bridge, "send_task_message", None))
+        )
 
     def _build_voice_snapshot(self) -> dict[str, object]:
         snapshot = dict(self._voice_snapshot)
         if self.current_running:
             payload = _parse_assistant_payload(self.current_stream_buffer)
             current_status = str(snapshot.get("status") or "running").strip() or "running"
-            if current_status == "dispatching" and not self.current_stream_buffer.strip():
+            if self._active_remote_paused:
+                status = "paused"
+            elif current_status == "dispatching" and not self.current_stream_buffer.strip():
                 status = "dispatching"
             else:
                 status = "running"
@@ -1261,7 +1622,7 @@ class ConsoleView(Gtk.Box):
             elif payload.answer and payload.answer not in {"Working…", "Thinking…"}:
                 summary = _sanitize_terminal_result_text(payload.answer)[:280]
             elif self.current_stream_buffer:
-                summary = _sanitize_terminal_result_text(self.current_stream_buffer)[:280] or summary
+                summary = self._remote_progress_summary(self.current_stream_buffer) or summary
             latest_action = payload.actions[-1] if payload.actions else str(snapshot.get("latest_action") or "")
             latest_progress = (
                 payload.progress[-1]
@@ -1272,14 +1633,14 @@ class ConsoleView(Gtk.Box):
                 {
                     "status": status,
                     "session_id": str(self.active_request_session_id or self.selected_session_id or snapshot.get("session_id") or ""),
-                    "task_id": str(self.active_request_session_id or snapshot.get("task_id") or ""),
+                    "task_id": str(self._active_remote_task_id or self.active_request_session_id or snapshot.get("task_id") or ""),
                     "goal": str(self._active_goal_text or snapshot.get("goal") or ""),
                     "latest_summary": summary,
                     "latest_action": latest_action,
                     "latest_progress": latest_progress,
                     "error": "",
-                    "paused": False,
-                    "supports_followups": False,
+                    "paused": bool(self._active_remote_paused),
+                    "supports_followups": self._voice_supports_followups(),
                     "updated_at": time.time(),
                 }
             )
@@ -1344,8 +1705,6 @@ class ConsoleView(Gtk.Box):
             self.voice_overlay.set_voice_name(self._voice_name())
             self.voice_overlay.set_mode_visible(True)
             self.voice_overlay.set_state("thinking")
-        # The voice client only handles the local duplex audio channel. Task
-        # execution still runs through the same local text backend as typing.
         started = self.voice_client.start()
         if not started:
             self.voice_mode_enabled = False
@@ -1503,7 +1862,12 @@ class ConsoleView(Gtk.Box):
     def _selected_summary(self) -> SessionSummary | None:
         return next((item for item in self.sessions if item.session_id == self.selected_session_id), None)
 
+    def _uses_remote_gateway(self) -> bool:
+        return bool(self.state.remote_url.strip())
+
     def _runtime_ready(self) -> bool:
+        if self._uses_remote_gateway():
+            return self.backend_connected
         return self.state.api_key_ready and self.backend_connected
 
     def _on_session_selected(self, _listbox: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
@@ -1624,7 +1988,9 @@ class ConsoleView(Gtk.Box):
             self.empty_box.set_visible(False)
             return
         self.empty_box.set_visible(True)
-        if not self._selected_summary():
+        if self.state.update_required:
+            self.empty_hint.set_label(self._update_required_message())
+        elif not self._selected_summary():
             self.empty_hint.set_label("Create a session from the left rail.")
         elif not self.state.api_key_ready:
             self.empty_hint.set_label("Connect your OpenAI key to continue.")
@@ -1635,16 +2001,41 @@ class ConsoleView(Gtk.Box):
 
     def _render_overlay(self, *, has_messages: bool = False) -> None:
         for button, callback in (
+            (self.overlay_primary, self._start_update_once),
+            (self.overlay_primary, self._open_download_once),
+            (self.overlay_primary, self._open_billing_once),
             (self.overlay_primary, self._open_key_dialog_once),
+            (self.overlay_primary, self._open_unlock_once),
             (self.overlay_primary, self._reconnect_backend_once),
             (self.overlay_secondary, self._open_browser_once),
             (self.overlay_secondary, self._open_files_once),
+            (self.overlay_secondary, self._open_tower_once),
+            (self.overlay_secondary, self._open_legacy_once),
+            (self.overlay_secondary, self._refresh_access_once),
             (self.overlay_secondary, self._open_key_dialog_once),
         ):
             try:
                 button.disconnect_by_func(callback)
             except Exception:
                 pass
+        if self.state.update_required:
+            self.empty_box.set_visible(False)
+            self.overlay_kicker.set_label("UPDATE REQUIRED")
+            self.overlay_body.set_label(self._update_required_message())
+            if self.state.latest_version:
+                self.overlay_status.set_label(
+                    f"Installed build {self.state.app_build}. Required build {self.state.min_supported_build}. Latest version: {self.state.latest_version}."
+                )
+            else:
+                self.overlay_status.set_label(
+                    f"Installed build {self.state.app_build}. Required build {self.state.min_supported_build}."
+                )
+            self.overlay_primary.set_label("Update now")
+            self.overlay_secondary.set_label("Refresh Status")
+            self.overlay_primary.connect("clicked", self._start_update_once)
+            self.overlay_secondary.connect("clicked", self._refresh_update_status_once)
+            self.state_overlay.set_visible(True)
+            return
         if has_messages:
             self.state_overlay.set_visible(False)
             return
@@ -1880,11 +2271,31 @@ class ConsoleView(Gtk.Box):
         else:
             self.overlay_status.set_label("Opening the latest OVA download page…")
 
+    def _open_tower_once(self, *_args) -> None:
+        self.service.open_account()
+
     def _open_key_dialog_once(self, *_args) -> None:
         self._show_api_key_dialog()
 
     def _open_unlock_once(self, *_args) -> None:
         self._show_access_dialog()
+
+    def _refresh_access_once(self, *_args) -> None:
+        self.overlay_secondary.set_sensitive(False)
+        self.overlay_status.set_label("Refreshing access…")
+
+        def _worker() -> None:
+            ok, message = self.service.refresh_access()
+
+            def _finish() -> bool:
+                self.refresh_state(self.service.read())
+                self.overlay_secondary.set_sensitive(True)
+                self.overlay_status.set_label(message)
+                return False
+
+            GLib.idle_add(_finish)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _refresh_update_status_once(self, *_args) -> None:
         self.overlay_secondary.set_sensitive(False)
@@ -2157,10 +2568,7 @@ class ConsoleView(Gtk.Box):
 
     def _sync_controls(self) -> None:
         locked = self.current_running or self._update_in_progress or self._update_check_inflight
-        can_send = (
-            not locked
-            and self._runtime_ready()
-        )
+        can_send = not locked and self._runtime_ready()
         self.composer_entry.set_sensitive(can_send)
         self.send_button.set_sensitive(can_send)
         self.attach_button.set_sensitive(can_send)
@@ -2175,8 +2583,6 @@ class ConsoleView(Gtk.Box):
         self.strip_access_button.set_sensitive(not locked)
         self.strip_key_button.set_sensitive(not locked)
         self.strip_model_button.set_sensitive(not locked)
-        # Voice controls stay available during a running task so the user can
-        # still stop the task by voice.
         can_voice = (
             not self._update_in_progress
             and not self._update_check_inflight
@@ -2290,9 +2696,20 @@ class ConsoleView(Gtk.Box):
         self._log_debug(
             f"finalize session={session_id} text_len={len(final_text)} current_running={self.current_running} details={payload.has_details}"
         )
+        remote_task_id = str(self._active_remote_task_id or "").strip()
+        remote_status = "completed"
+        remote_event_kind = "result"
+        remote_error = ""
+        if outcome == "stopped" or response_raw == "__ARIA_STOPPED__" or buffer_raw == "__ARIA_STOPPED__":
+            remote_status = "stopped"
+            remote_event_kind = "control"
+        elif outcome == "failed":
+            remote_status = "failed"
+            remote_event_kind = "error"
+            remote_error = final_text
         memory_text = final_text
         memory_notice = ""
-        if outcome != "failed" and final_text and self._active_goal_text:
+        if remote_status == "completed" and final_text and self._active_goal_text:
             try:
                 transcript = self.history.get_messages(session_id, limit=self.state.max_transcript_messages)
                 memory_result = self.service.decide_long_term_memory_action(
@@ -2317,23 +2734,34 @@ class ConsoleView(Gtk.Box):
             self._save_message(session_id, "assistant", _serialize_assistant_payload(payload))
         if usage and task_id:
             self._report_usage_async(task_id, usage)
-        final_snapshot_status = "completed"
-        final_error = ""
-        if outcome == "failed":
+        if remote_task_id:
+            self._sync_remote_task_async(
+                status=remote_status,
+                latest_summary=memory_text or response_raw or "Task finished.",
+                latest_result=memory_text if remote_status == "completed" else "",
+                error=remote_error,
+                spent_usd=float(usage.get("cost_usd") or 0.0) if isinstance(usage, dict) else None,
+                usage=usage if isinstance(usage, dict) else None,
+                event_text=memory_text or response_raw or "Task finished.",
+                event_kind=remote_event_kind,
+            )
+        final_snapshot_status = remote_status
+        if not remote_task_id and outcome == "failed":
             final_snapshot_status = "failed"
-            final_error = memory_text
-        elif outcome == "stopped" or response_raw == "__ARIA_STOPPED__" or buffer_raw == "__ARIA_STOPPED__":
+        elif not remote_task_id and (outcome == "stopped" or response_raw == "__ARIA_STOPPED__" or buffer_raw == "__ARIA_STOPPED__"):
             final_snapshot_status = "stopped"
+        elif not remote_task_id:
+            final_snapshot_status = "completed"
         self._push_voice_snapshot(
             status=final_snapshot_status,
             session_id=session_id,
-            task_id=str(task_id or session_id or "").strip(),
+            task_id=remote_task_id or str(task_id or session_id or "").strip(),
             goal=self._active_goal_text,
             latest_summary=memory_text or response_raw or "Task finished.",
             latest_result=memory_text if final_snapshot_status == "completed" else "",
             latest_action=payload.actions[-1] if payload.actions else "",
             latest_progress=payload.progress[-1] if payload.progress else "",
-            error=final_error,
+            error=remote_error or (memory_text if final_snapshot_status == "failed" else ""),
             paused=False,
             supports_followups=False,
         )
@@ -2342,7 +2770,14 @@ class ConsoleView(Gtk.Box):
         self.current_running = False
         self._task_started_at = 0.0
         self._last_task_event_at = 0.0
+        self._awaiting_remote_accept = False
+        self._active_remote_task_id = None
+        self._active_remote_budget_usd = 0.0
+        self._active_remote_paused = False
         self._active_goal_text = ""
+        self._last_remote_screenshot_sync_at = 0.0
+        self._remote_screenshot_sync_inflight = False
+        self._seen_remote_message_ids = set()
         self.streaming_details_expander = None
         self.streaming_details_box = None
         self.streaming_details_scroller = None
@@ -2367,6 +2802,19 @@ class ConsoleView(Gtk.Box):
             return
         self.current_stream_buffer += normalized_chunk
         self._last_task_event_at = time.monotonic()
+        if self._active_remote_task_id:
+            self._sync_remote_screenshot_async()
+            summary = self._remote_progress_summary(normalized_chunk)
+            if summary:
+                self._sync_remote_task_async(
+                    status="running",
+                    latest_summary=summary,
+                    spent_usd=float(usage.get("cost_usd") or 0.0) if isinstance(usage, dict) else None,
+                    usage=usage if isinstance(usage, dict) else None,
+                    event_text=summary,
+                    event_kind="progress",
+                    throttle_seconds=3.0,
+                )
         if self.selected_session_id == session_id:
             payload = _parse_assistant_payload(self.current_stream_buffer)
             visible_text = _sanitize_terminal_result_text(payload.answer) or ("Working…" if payload.has_details else "Thinking…")
@@ -2380,13 +2828,23 @@ class ConsoleView(Gtk.Box):
     def _poll_backend_queue(self) -> bool:
         try:
             now = time.monotonic()
+            if (
+                self.current_running
+                and self._awaiting_remote_accept
+                and self.active_request_session_id
+                and self._task_started_at > 0
+                and (now - self._task_started_at) >= 15.0
+            ):
+                self._log_debug("remote accept timeout after 15s without task_state running=True")
+                self._abort_current_task("Connection issue: the remote task was not accepted by the runtime. Retry.")
+                return True
             if now - self._last_disk_refresh >= 1.0:
                 self._last_disk_refresh = now
                 stamp = self.service.state_stamp()
                 if stamp != self._last_state_stamp:
                     self._last_state_stamp = stamp
                     self.refresh_state(self.service.read())
-                if not self.backend_connected and self.state.api_key_ready:
+                if not self._uses_remote_gateway() and not self.backend_connected and self.state.api_key_ready:
                     self._ensure_backend_ready()
             while True:
                 try:
@@ -2416,13 +2874,57 @@ class ConsoleView(Gtk.Box):
                     elif text.startswith("vm_link_failed:"):
                         reason = text.split(":", 1)[1].strip() or "VM link failed."
                         self._append_system_notice(f"VM link failed: {reason}")
+                elif etype == "remote_task_start":
+                    task = event.get("task") if isinstance(event.get("task"), dict) else None
+                    if task:
+                        incoming_task_id = str(task.get("id") or "").strip()
+                        if self.current_running:
+                            if incoming_task_id and incoming_task_id == str(self._active_remote_task_id or "").strip():
+                                continue
+                            self._pending_remote_task = task
+                            self._log_debug(f"queued remote_task_start task_id={incoming_task_id or '-'} while busy")
+                            continue
+                        self._log_debug(f"event remote_task_start task_id={incoming_task_id or '-'}")
+                        self.launch_remote_task(task)
+                elif etype == "remote_task_stop":
+                    self._log_debug(f"event remote_task_stop task_id={str(event.get('task_id') or '-')}")
+                    self.stop_active_remote_task()
+                elif etype == "remote_task_pause":
+                    self._log_debug(f"event remote_task_pause task_id={str(event.get('task_id') or '-')}")
+                    self.pause_active_remote_task()
+                elif etype == "remote_task_resume":
+                    self._log_debug(f"event remote_task_resume task_id={str(event.get('task_id') or '-')}")
+                    self.resume_active_remote_task()
+                elif etype == "remote_task_messages":
+                    self._log_debug(f"event remote_task_messages task_id={str(event.get('task_id') or '-')}")
+                    self.handle_remote_task_messages(
+                        str(event.get("task_id") or ""),
+                        [item for item in list(event.get("messages") or []) if isinstance(item, dict)],
+                    )
                 elif etype == "task_state":
                     running = bool(event.get("running"))
                     self._log_debug(f"event task_state running={running} active={self.active_request_session_id}")
                     self._last_task_event_at = time.monotonic()
+                    if running:
+                        self._awaiting_remote_accept = False
                     self.current_running = running
+                    if not running:
+                        self._awaiting_remote_accept = False
+                        self._active_remote_paused = False
+                    if running and self._active_remote_task_id:
+                        self._sync_remote_task_async(
+                            status="running",
+                            latest_summary="Remote task is now running on the device.",
+                            event_text="Remote task entered running state on device.",
+                            event_kind="status",
+                        )
+                        self._sync_remote_screenshot_async(minimum_interval=0.0)
                     if not running and self.active_request_session_id is not None:
                         self._finalize_stream()
+                    if not running and self._pending_remote_task and not self.current_running:
+                        pending_task = self._pending_remote_task
+                        self._pending_remote_task = None
+                        self.launch_remote_task(pending_task)
                     self._publish_voice_snapshot()
                     self._sync_controls()
                 elif etype == "stream":
@@ -2431,6 +2933,17 @@ class ConsoleView(Gtk.Box):
                         str(event.get("chunk") or ""),
                         usage=event.get("usage") if isinstance(event.get("usage"), dict) else None,
                     )
+                elif etype == "computer_action":
+                    if self.current_running and self._active_remote_task_id:
+                        self._sync_remote_screenshot_async(minimum_interval=0.0)
+                elif etype == "computer_screenshot":
+                    if self.current_running and self._active_remote_task_id:
+                        image_base64 = str(event.get("image_base64") or "")
+                        mime = str(event.get("mime") or "image/png")
+                        if image_base64:
+                            self._sync_remote_screenshot_data_async(image_base64, mime)
+                        else:
+                            self._sync_remote_screenshot_async(minimum_interval=0.0)
                 elif etype == "response":
                     self._log_debug(f"event response len={len(str(event.get('text') or ''))}")
                     self._last_task_event_at = time.monotonic()
@@ -2471,10 +2984,35 @@ class ConsoleView(Gtk.Box):
         show_model_dialog(self, self.service, lambda: self.refresh_state(self.service.read()))
 
     def _show_access_dialog(self) -> None:
-        self._show_api_key_dialog()
+        self._log_debug(
+            f"_show_access_dialog entered access_window={'set' if self.access_window is not None else 'none'} "
+            f"auth_ready={self.state.auth_ready} account_email={self.state.account_email}"
+        )
+        if self.access_window is not None:
+            self._log_debug("_show_access_dialog present existing window")
+            self.access_window.present()
+            return
+
+        def on_success():
+            self._log_debug("_show_access_dialog on_success")
+            self.access_window = None
+            self.state = self.service.read()
+            self.refresh_state(self.state)
+
+        self.access_window = show_access_dialog(self, self.state, self.service, on_success)
+        self._log_debug(f"_show_access_dialog created window={self.access_window is not None}")
+        self.access_window.connect("close-request", lambda *_args: self._clear_access_window())
+        self.access_window.connect("destroy", lambda *_args: self._clear_access_window())
 
     def _open_account(self) -> None:
-        self._show_api_key_dialog()
+        self._log_debug(
+            f"_open_account auth_ready={self.state.auth_ready} "
+            f"account_email={self.state.account_email}"
+        )
+        if self.state.auth_ready:
+            self.service.open_account()
+            return
+        self._show_access_dialog()
 
     def _clear_key_window(self, *_args):
         self.key_window = None
