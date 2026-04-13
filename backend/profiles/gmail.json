@@ -1,0 +1,104 @@
+{
+  "id": "gmail",
+  "goal_keywords": [
+    "gmail",
+    "mail.google",
+    "email",
+    "mail"
+  ],
+  "intents": {
+    "summary": [
+      "resume",
+      "résum",
+      "summary",
+      "summarize"
+    ],
+    "reply": [
+      "reply",
+      "repond",
+      "répond",
+      "answer"
+    ],
+    "delivery": [
+      "send",
+      "envoie",
+      "envoy"
+    ]
+  },
+  "ui": {
+    "focus_keywords": [
+      "gmail",
+      "mail.google",
+      "chrome",
+      "email",
+      "mail"
+    ],
+    "send_confirmation_patterns": [
+      "\\bmessage\\s+sent\\b",
+      "\\bmensaje\\s+enviado\\b",
+      "\\bmessage\\s+envoy",
+      "\\bcorreo\\s+enviado\\b",
+      "\\bmail\\s+sent\\b"
+    ],
+    "reply_markers": [
+      "summarize this email",
+      "translate to english",
+      "/#inbox/fm",
+      "unsubscribe"
+    ],
+    "reply_shortcut": [
+      "r"
+    ],
+    "compose_shortcut": [
+      "c"
+    ],
+    "recipient_commit_shortcut": [
+      "enter"
+    ],
+    "to_subject_tabs": 1,
+    "subject_body_tabs": 1,
+    "send_shortcut": [
+      "ctrl",
+      "enter"
+    ],
+    "sent_folder_terms": [
+      "sent",
+      "envoy",
+      "enviado"
+    ],
+    "send_button_terms": [
+      "send",
+      "envoyer",
+      "enviar",
+      "envoy"
+    ],
+    "overlay_noise_markers": [
+      "console",
+      "sources",
+      "breakpoints",
+      "listeners",
+      "computed",
+      "styles",
+      "devtools",
+      "</script",
+      "unicode-bidi"
+    ],
+    "default_reply_text": "hello",
+    "summary_y_min": 210,
+    "summary_y_max": 420,
+    "summary_ignore_terms": [
+      "gmail",
+      "search",
+      "compose",
+      "inbox",
+      "starred",
+      "snoozed",
+      "sent",
+      "drafts",
+      "labels",
+      "sign",
+      "chrome",
+      "more"
+    ]
+  }
+}
