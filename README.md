@@ -9,6 +9,12 @@
 An agent-focused operating system that runs inside a dedicated virtual machine, with Terminal Aria, local files, local OpenAI key setup, local voice mode, and visible long-term memory.
 The project started as an attempt to answer a simple question: what happens if an AI agent is given control of an operating system, including sudo, browser navigation, file access, and UI interaction, but is isolated inside its own VM? AriaOS is that answer. The VM is the product, the repo now exposes the readable local brain that runs inside it, and the public build keeps the main path local-first.
 
+<p align="center">
+  <a href="https://getariaos.com/download">
+    <img src="assets/demo/ariaos-demo.gif" alt="AriaOS demo preview" />
+  </a>
+</p>
+
 ## 🚀 Features
 
 - 🤖 **Agent-focused OS** - A dedicated environment for running and operating an agent inside a VM
@@ -42,11 +48,6 @@ For the actual product experience, the intended path remains the preconfigured A
 - **Direct OVA download** - [Download AriaOS (.ova)](https://getariaos.com/api/downloads/ova)
 - **Download page** - [AriaOS VM downloads](https://getariaos.com/download)
 - **External mirror** - If the VM grows beyond GitHub's per-file release limit, keep the canonical download on your own server/CDN and point the release page here
-
-## 🎥 Demo Video
-
-- **Walkthrough video** - Replace this with your demo URL, for example `https://www.youtube.com/watch?v=...`
-- **What to show** - Boot the VM, enter the OpenAI key, launch Terminal Aria, show computer use, voice mode, long-term memory, and a real task from start to finish
 
 ## 📖 Usage
 
