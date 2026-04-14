@@ -153,6 +153,9 @@ LEGACY_UI_ACTIONS = {
     "scroll",
     "type_text",
 }
+# These action names still exist in older prompts and traces, but in the
+# public local-first runtime they must never drive UI work directly. Visible
+# interaction goes through the planner's "computer" action instead.
 CONFIDENCE_FALLBACK = 0.96
 PARSER_MIN_CONFIDENCE = 0.10
 SNIPER_AUTO_TRIGGER = 0.85
@@ -2023,6 +2026,9 @@ class AgenticLoop:
         return getattr(obj, key, default)
 
     def _computer_tool_spec(self) -> Dict[str, Any]:
+        # The planner action surface is mostly JSON dispatched locally by this
+        # runtime. "computer" is the one branch that hands control to the
+        # native OpenAI computer-use tool for low-level desktop interaction.
         return {
             "type": "computer",
         }
@@ -2325,6 +2331,10 @@ class AgenticLoop:
         ])
 
     def _run_computer_use(self, instruction: str, max_turns: int = 0) -> Dict[str, Any]:
+        # This is the second control layer of AriaOS:
+        # 1. the main planner chooses action="computer"
+        # 2. this helper runs a dedicated OpenAI Responses loop with the native
+        #    computer tool until the UI subtask is completed.
         if self._stop_requested():
             return self._computer_stop_result()
         if not self.client:
@@ -2772,10 +2782,12 @@ class AgenticLoop:
         self.load_session_log(safe_session_id)
 
     def execute_goal(self, goal: str, stop_event: Optional[threading.Event] = None) -> Generator[str, None, Dict[str, Any]]:
-        """Execute a goal using the ReAct agentic loop with memory.
-        
-        Yields status messages for the frontend.
-        Returns final result dict.
+        """Run the top-level planner loop for one user goal.
+
+        The planner receives the system prompt plus session context, returns one
+        JSON action per step, and the large action dispatch block below executes
+        that action using local tools, the computer-use subloop, or file/system
+        helpers.
         """
         self._active_stop_event = stop_event
 
@@ -2784,7 +2796,9 @@ class AgenticLoop:
             self._active_stop_event = None
             return {"success": False, "reason": "No OpenAI client"}
 
-        # Build system prompt — clean slate each task (no past conversation leaking)
+        # Rebuild the planner prompt from scratch for every task. The planner is
+        # stateless between tasks except for explicit session/task history that
+        # we choose to inject here.
         system_prompt = SYSTEM_PROMPT.replace("{memory_context}", "")
         system_prompt += "\n\n" + self._temporal_context_text()
         system_prompt += "\n\n" + self._scheduled_tasks_context_text()
@@ -3307,6 +3321,11 @@ class AgenticLoop:
                 self._record_tool_usage(action_type)
                 observation = ""
 
+                # The branches below are the planner-visible action surface.
+                # They define what the JSON planner can actually do in the
+                # public runtime: non-visual shell work, computer-use UI work,
+                # file helpers, desktop helpers, and dev/system utilities.
+
                 # ---- EXECUTE COMMAND ----
                 if action_type == "execute":
                     command = action.get("command", "")
@@ -3397,6 +3416,10 @@ class AgenticLoop:
                                 "stopped": True,
                             }
                             break
+
+                # Specialized local helpers start here. These are intended for
+                # file/system/navigation work that does not require visual UI
+                # interaction inside a live window.
 
                 # ---- WAIT ----
                 elif action_type == "wait":
@@ -5330,6 +5353,9 @@ class AgenticLoop:
         return None
 
     def _should_use_specialized_tool_before_computer(self, instruction: str) -> Optional[str]:
+        # When the planner already mentions a concrete URL or file, route it to
+        # the precise helper first so computer-use turns are spent on visible UI
+        # interaction rather than on path/url resolution.
         text = str(instruction or "").strip()
         lowered = text.lower()
         if not text:
@@ -5357,6 +5383,9 @@ class AgenticLoop:
         return None
 
     def _should_block_execute(self, command: str) -> Optional[str]:
+        # Shell execution is for non-visual helper work. Browser/Gmail/upload
+        # flows must stay in specialized helpers plus computer-use so the agent
+        # does not fall back to Terminal for tasks meant to happen on screen.
         lowered = str(command or "").strip().lower()
         if not lowered:
             return None
