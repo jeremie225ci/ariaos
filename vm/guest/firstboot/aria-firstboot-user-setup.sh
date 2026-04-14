@@ -7,6 +7,9 @@ ALLOW_EXISTING_USERS="${ARIA_FIRSTBOOT_ALLOW_EXISTING_USERS:-0}"
 TTY_DEVICE="${ARIA_FIRSTBOOT_TTY:-/dev/tty1}"
 SKIP_REBOOT="${ARIA_FIRSTBOOT_SKIP_REBOOT:-0}"
 RESERVED_USERNAMES="/usr/lib/user-setup/reserved-usernames"
+LIGHTDM_AUTOLOGIN_DIR="/etc/lightdm/lightdm.conf.d"
+LIGHTDM_AUTOLOGIN_FILE="${LIGHTDM_AUTOLOGIN_DIR}/50-aria-autologin.conf"
+DEFAULT_DESKTOP_SESSION="${ARIA_FIRSTBOOT_DESKTOP_SESSION:-xfce}"
 
 real_users() {
   awk -F: '$3 >= 1000 && $1 != "nobody" { print $1 }' /etc/passwd
@@ -64,6 +67,21 @@ create_user() {
   install -d -m 0755 /etc/sudoers.d
   printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$username" >"/etc/sudoers.d/90-ariaos-user"
   chmod 0440 /etc/sudoers.d/90-ariaos-user
+}
+
+install_lightdm_autologin() {
+  local username="$1"
+  local session_name="${2:-$DEFAULT_DESKTOP_SESSION}"
+
+  install -d -m 0755 "$LIGHTDM_AUTOLOGIN_DIR"
+  cat >"$LIGHTDM_AUTOLOGIN_FILE" <<EOF
+[Seat:*]
+autologin-user=${username}
+autologin-user-timeout=0
+user-session=${session_name}
+autologin-session=${session_name}
+EOF
+  chmod 0644 "$LIGHTDM_AUTOLOGIN_FILE"
 }
 
 seed_user_branding() {
@@ -148,7 +166,7 @@ fi
 
 whiptail \
   --title "Welcome to AriaOS" \
-  --msgbox "Create the Linux account that will own this machine. After this step, AriaOS will reboot to the normal login screen. Aria onboarding starts after you log in." \
+  --msgbox "Create the Linux account that will own this machine. After this step, AriaOS will reboot and sign in automatically so Aria onboarding can start immediately." \
   12 78 || true
 
 while true; do
@@ -183,6 +201,7 @@ while true; do
 
   create_user "$username" "$full_name" "$password_one"
   seed_user_branding "$username"
+  install_lightdm_autologin "$username"
   install -d -m 0755 /var/lib/ariaos
   rm -f "$MARKER_PATH"
   touch "$COMPLETE_PATH"
@@ -194,7 +213,7 @@ while true; do
     exit 0
   fi
 
-  whiptail --title "AriaOS setup complete" --msgbox "Linux account '${username}' has been created. The system will reboot to the normal login screen." 10 72
+  whiptail --title "AriaOS setup complete" --msgbox "Linux account '${username}' has been created. The system will reboot and open the desktop automatically." 10 72
   systemctl reboot
   exit 0
 done
