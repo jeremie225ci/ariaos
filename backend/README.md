@@ -2,6 +2,14 @@
 
 This directory contains the readable local backend used by AriaOS inside the VM.
 
+If you want the exact planner/action contract, read `docs/BRAIN_ACTION_SURFACE.md`
+from the repository root. That document explains:
+
+- how the planner emits JSON actions
+- how the `computer` subloop differs from specialized local helpers
+- which file, desktop, system, and programming actions are really implemented
+- which browser/Terminal guard rails are enforced by the runtime
+
 - `backend/prompts.py`
   Visible prompt definitions for the local backend, including the direct-answer
   prompt and the full VM-style agentic system prompt.

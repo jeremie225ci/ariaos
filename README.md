@@ -59,6 +59,13 @@ The public AriaOS flow is now **local-only**:
 - OpenAI API key stored locally inside the VM
 - embedded local runtime as the only supported execution path
 
+## 🧠 Brain Runtime
+
+If you want to understand what the public AriaOS brain can actually do, read:
+
+- `docs/BRAIN_ACTION_SURFACE.md` - planner contract, `computer` loop, desktop helpers, file/programming actions, and runtime guard rails
+- `docs/LOCAL_FIRST_ARCHITECTURE.md` - local runtime topology inside the VM
+
 ## 🔧 Configuration
 
 Main local files used by AriaOS:
@@ -82,7 +89,8 @@ ariaos/
 │   └── release/                 # VM export and release tooling
 ├── docs/
 │   ├── INSTALL_VM.md            # VM setup flow
-│   └── LOCAL_FIRST_ARCHITECTURE.md
+│   ├── LOCAL_FIRST_ARCHITECTURE.md
+│   └── BRAIN_ACTION_SURFACE.md  # Planner actions, computer-use loop, and local helper/tool surface
 └── assets/                      # Shared repository assets
 ```
 
