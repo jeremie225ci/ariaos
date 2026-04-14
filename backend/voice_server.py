@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import audioop
 import base64
 import json
+import math
+import struct
 import time
 import uuid
 from collections import deque
@@ -35,6 +36,24 @@ STOP_MARKERS = (
     "annule",
     "annuler",
 )
+
+
+def _pcm_rms(chunk: bytes) -> int:
+    # `audioop` disappeared from newer Python builds, but the voice server only
+    # needs a simple RMS estimate over 16-bit mono PCM to detect speech bursts.
+    if not chunk or len(chunk) < 2:
+        return 0
+    size = len(chunk) // 2
+    if size <= 0:
+        return 0
+    try:
+        samples = struct.unpack("<" + ("h" * size), chunk[: size * 2])
+    except struct.error:
+        return 0
+    energy = sum(sample * sample for sample in samples)
+    if energy <= 0:
+        return 0
+    return int(math.sqrt(energy / size))
 
 
 def _clean_text(text: str, *, limit: int = 0) -> str:
@@ -166,7 +185,7 @@ class AriaVoiceServer:
             return b""
 
         state.pre_roll.append(chunk)
-        rms = audioop.rms(chunk, 2) if len(chunk) >= 2 else 0
+        rms = _pcm_rms(chunk)
         is_speech = rms >= VOICE_SPEECH_RMS_THRESHOLD
 
         if not state.in_speech:
