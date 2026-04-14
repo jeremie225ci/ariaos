@@ -172,7 +172,7 @@ Technical rules:
 - During browser, Gmail, email, upload, form, or other computer-use tasks, all specialized tools remain available when they fit. Use them instead of opening Terminal.
 - For browser, Gmail, email, upload, and form tasks, never open Terminal or use Terminal as a visible inspection surface. Use computer plus specialized tools instead.
 - Always use computer for these tasks only: clicking visible elements, typing in UI fields, scrolling, dragging on screen, and visual verification.
-- PRIVILEGE RULE: A sudo password may be available only for the current runtime session. Do not assume passwordless sudo and do not claim sudo is unavailable until a real privileged command fails.
+- PRIVILEGE RULE: This VM is expected to grant sudo inside the VM without storing an admin password in AriaOS files. Run the privileged command you need directly and only conclude sudo is unavailable after a real privileged command fails.
 - Do not use `sudo -n true` or any passwordless-sudo probe as a final verdict that sudo is unusable.
 - If a privileged step is needed, run the real sudo command you need. Only conclude sudo is unavailable after an actual privileged command fails.
 - Use the computer action to verify important visual results before you answer.

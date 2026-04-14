@@ -58,40 +58,12 @@ create_user() {
   adduser --disabled-password --gecos "$fullname" "$username"
   printf '%s:%s\n' "$username" "$password" | chpasswd
   adduser "$username" sudo >/dev/null 2>&1 || true
-}
 
-seed_local_admin_secret() {
-  local username="$1"
-  local password="$2"
-  local user_home
-  local config_dir
-  local secret_path
-  local stamp_path
-  user_home="$(getent passwd "$username" | cut -d: -f6)"
-  [[ -n "$user_home" && -d "$user_home" ]] || return 0
-
-  config_dir="$user_home/.config/ariaos"
-  secret_path="$config_dir/local_agent_secrets.json"
-  stamp_path="$config_dir/local_secret_stamp"
-  if [[ -f "$secret_path" ]]; then
-    return 0
-  fi
-
-  install -d -o "$username" -g "$username" -m 0700 "$config_dir"
-  ARIA_SECRET_PATH="$secret_path" ARIA_SECRET_STAMP="$stamp_path" ARIA_VM_ADMIN_PASSWORD="$password" python3 - <<'PY'
-import json
-import os
-import time
-from pathlib import Path
-
-secret_path = Path(os.environ["ARIA_SECRET_PATH"])
-stamp_path = Path(os.environ["ARIA_SECRET_STAMP"])
-password = os.environ["ARIA_VM_ADMIN_PASSWORD"]
-secret_path.write_text(json.dumps({"vm_admin_password": password}, indent=2), encoding="utf-8")
-stamp_path.write_text(str(time.time()), encoding="utf-8")
-PY
-  chown "$username:$username" "$secret_path" "$stamp_path"
-  chmod 0600 "$secret_path" "$stamp_path"
+  # AriaOS is designed to run autonomously inside its own VM, so the created
+  # local user gets passwordless sudo via sudoers instead of a persisted secret.
+  install -d -m 0755 /etc/sudoers.d
+  printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$username" >"/etc/sudoers.d/90-ariaos-user"
+  chmod 0440 /etc/sudoers.d/90-ariaos-user
 }
 
 seed_user_branding() {
@@ -210,7 +182,6 @@ while true; do
   fi
 
   create_user "$username" "$full_name" "$password_one"
-  seed_local_admin_secret "$username" "$password_one"
   seed_user_branding "$username"
   install -d -m 0755 /var/lib/ariaos
   rm -f "$MARKER_PATH"

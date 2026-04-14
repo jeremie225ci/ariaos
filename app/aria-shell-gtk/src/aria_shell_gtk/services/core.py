@@ -118,6 +118,7 @@ MEMORY_MAX_PLAYBOOK_CHARS = 220
 MEMORY_MAX_SUMMARY_CHARS = 320
 MEMORY_VECTOR_TOP_K = 4
 MEMORY_VECTOR_MIN_SCORE = 0.18
+DISALLOWED_LOCAL_SECRET_FIELDS = frozenset({"vm_admin_password"})
 MEMORY_SECTION_PLACEHOLDERS = {
     "User Preferences": "- Add stable preferences here. Only keep facts you want Aria to remember.",
     "Verified Playbooks": "- Add durable, verified fixes here. Keep each entry short and factual.",
@@ -1461,6 +1462,17 @@ def _split_secret_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], dict
     return plain, sensitive
 
 
+def _strip_disallowed_secret_fields(payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    cleaned = dict(payload or {})
+    changed = False
+    for field in DISALLOWED_LOCAL_SECRET_FIELDS:
+        clear_secret(field)
+        if field in cleaned:
+            cleaned.pop(field, None)
+            changed = True
+    return cleaned, changed
+
+
 def _merge_local_secrets(payload: dict[str, Any]) -> dict[str, Any]:
     merged = dict(payload or {})
     for field in sensitive_fields():
@@ -1951,7 +1963,10 @@ class RuntimeStore:
     @staticmethod
     def user_secrets() -> dict[str, Any]:
         _migrate_sensitive_fields_from_json()
-        return _merge_local_secrets(_load_json(SECRETS_FILE))
+        payload, changed = _strip_disallowed_secret_fields(_load_json(SECRETS_FILE))
+        if changed:
+            _save_json(SECRETS_FILE, payload)
+        return _merge_local_secrets(payload)
 
     @staticmethod
     def account_session() -> dict[str, Any]:
@@ -2100,9 +2115,10 @@ class RuntimeStore:
 
     @staticmethod
     def save_user_secrets(payload: dict[str, Any]) -> None:
-        plain, sensitive = _split_secret_payload(payload)
+        cleaned, _ = _strip_disallowed_secret_fields(payload)
+        plain, sensitive = _split_secret_payload(cleaned)
         for field, value in sensitive.items():
-            label = "AriaOS OpenAI API Key" if field == "openai_api_key" else "AriaOS VM Admin Password"
+            label = "AriaOS OpenAI API Key"
             if value:
                 if not set_secret(field, value, label=label):
                     plain[field] = value
@@ -2168,14 +2184,15 @@ class RuntimeStore:
 
     @staticmethod
     def vm_admin_password() -> str:
-        secrets = RuntimeStore.user_secrets()
-        return str(secrets.get("vm_admin_password") or "").strip()
+        RuntimeStore.user_secrets()
+        return ""
 
     @staticmethod
     def save_vm_admin_password(password: str) -> None:
-        payload = _load_json(SECRETS_FILE)
-        payload["vm_admin_password"] = str(password or "").strip()
-        RuntimeStore.save_user_secrets(payload)
+        del password
+        payload, changed = _strip_disallowed_secret_fields(_load_json(SECRETS_FILE))
+        if changed:
+            _save_json(SECRETS_FILE, payload)
 
     @staticmethod
     def _local_repo_root() -> Path:

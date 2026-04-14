@@ -2195,7 +2195,7 @@ class ConsoleView(Gtk.Box):
         inner.append(title)
 
         body = Gtk.Label(
-            label="Enter the VM admin password to replace the local AriaOS client files in /opt/aria-client."
+            label="This VM uses sudo without a stored password. Install continues without saving any admin secret."
         )
         body.add_css_class("overlay-text")
         body.set_wrap(True)
@@ -2207,19 +2207,6 @@ class ConsoleView(Gtk.Box):
         status.set_wrap(True)
         status.set_xalign(0)
         inner.append(status)
-
-        password_entry = Gtk.Entry()
-        password_entry.add_css_class("dock-input")
-        password_entry.set_placeholder_text("VM admin password")
-        password_entry.set_visibility(False)
-        saved_password = self.service.vm_admin_password()
-        if saved_password:
-            password_entry.set_text(saved_password)
-        inner.append(password_entry)
-
-        remember = Gtk.CheckButton(label="Remember on this VM")
-        remember.set_active(True)
-        inner.append(remember)
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         cancel = Gtk.Button(label="Cancel")
@@ -2239,18 +2226,11 @@ class ConsoleView(Gtk.Box):
             win.destroy()
 
         def _submit(*_args) -> None:
-            password = password_entry.get_text().strip()
-            if not password:
-                status.set_label("VM admin password is required.")
-                return
-            if remember.get_active():
-                self.service.save_vm_admin_password(password)
             _close()
-            self._run_update_with_password(password)
+            self._run_update_with_password("")
 
         cancel.connect("clicked", _close)
         install.connect("clicked", _submit)
-        password_entry.connect("activate", _submit)
         win.connect("destroy", lambda *_args: setattr(self, "_update_password_window", None))
         self._update_password_window = win
         win.present()

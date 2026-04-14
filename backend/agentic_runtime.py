@@ -149,7 +149,6 @@ DEFAULT_COMMAND_CWD = (
 )
 if not os.path.isdir(DEFAULT_COMMAND_CWD):
     DEFAULT_COMMAND_CWD = str(Path.home())
-OPTIONAL_SUDO_PASSWORD_ENV = "ARIA_VM_ADMIN_PASSWORD"
 LEGACY_UI_ACTIONS = {
     "ask_vision",
     "chain_type",
@@ -211,17 +210,6 @@ def _visual_parser_candidates() -> List[str]:
         ]
     )
     return candidates
-
-
-def _wrap_shell_command_with_session_sudo(command: str, env: Dict[str, str]) -> tuple[str, Dict[str, str]]:
-    """Use a session-only sudo password when one is explicitly provided in the environment."""
-    prepared_env = dict(env)
-    sudo_password = str(prepared_env.get(OPTIONAL_SUDO_PASSWORD_ENV) or "").strip()
-    if not sudo_password or "sudo" not in command or "-S" in command:
-        return command, prepared_env
-    prepared_command = re.sub(r"\bsudo\b(?!\s+-S\b)", "sudo -S -p ''", command)
-    wrapped_command = f"printf '%s\\n' \"${OPTIONAL_SUDO_PASSWORD_ENV}\" | {prepared_command}"
-    return wrapped_command, prepared_env
 # SYSTEM_PROMPT is imported from brain_config.py — single source of truth
 
 
@@ -8450,19 +8438,13 @@ bpy.ops.render.render(write_still=True)
                 )
                 return f"[started background] {background_cmd}"
 
-            # Commands run from the user's workspace/home by default. If the
-            # current runtime session has an explicit sudo password in env,
-            # wrap the command so sudo can read it from stdin without the
-            # password appearing in the repository or process arguments.
-            command, command_env = _wrap_shell_command_with_session_sudo(command, self.env)
-
             result = subprocess.run(
                 ["bash", "-lc", command],
                 capture_output=True,
                 text=True,
                 timeout=COMMAND_TIMEOUT,
                 cwd=DEFAULT_COMMAND_CWD,
-                env=command_env
+                env=self.env
             )
 
             output = ""
