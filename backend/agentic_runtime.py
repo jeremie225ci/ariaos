@@ -115,13 +115,13 @@ except ImportError:
     TYPE_TEXT_DELAY = 0.03
     TRACE_ENABLED = True
     TRACE_FILE = "/tmp/ariaos_agent_trace.jsonl"
-    VISUAL_PARSER_URL = "http://192.168.0.242:8000/parse"
+    VISUAL_PARSER_URL = os.environ.get("ARIA_VISUAL_PARSER_URL", "")
     VISUAL_PARSER_TIMEOUT = 12
     VISUAL_PARSER_RETRY_AFTER = 30
     PREFER_KERNEL_INPUT = False
-    SNIPER_API_KEY = os.environ.get("SNIPER_API_KEY", "")
-    SNIPER_BASE_URL = os.environ.get("SNIPER_BASE_URL", "https://openrouter.ai/api/v1")
-    SNIPER_MODEL = os.environ.get("SNIPER_MODEL", "bytedance/ui-tars-1.5-7b")
+    SNIPER_API_KEY = ""
+    SNIPER_BASE_URL = ""
+    SNIPER_MODEL = ""
     SLIDING_WINDOW_RAW_MESSAGES = 8
     USER_PROFILE_FILE = os.path.expanduser("~/.ariaos/memory/user_profile.json")
     TASK_SUMMARIES_FILE = os.path.expanduser("~/.ariaos/memory/task_summaries.json")
@@ -141,6 +141,15 @@ SUPPORTED_OPENAI_MODELS = {
     "gpt-5.4",
     "gpt-5.4-mini",
 }
+PUBLIC_REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_COMMAND_CWD = (
+    os.environ.get("ARIA_COMMAND_CWD")
+    or os.environ.get("ARIA_CLIENT_WORKSPACE_DIR")
+    or str(Path.home())
+)
+if not os.path.isdir(DEFAULT_COMMAND_CWD):
+    DEFAULT_COMMAND_CWD = str(Path.home())
+OPTIONAL_SUDO_PASSWORD_ENV = "ARIA_VM_ADMIN_PASSWORD"
 LEGACY_UI_ACTIONS = {
     "ask_vision",
     "chain_type",
@@ -187,6 +196,32 @@ MODEL_PRICING_USD_PER_MILLION = {
         "output": 14.00,
     },
 }
+
+
+def _visual_parser_candidates() -> List[str]:
+    """Return only repo-relative or env-provided parser script locations."""
+    candidates: List[str] = []
+    override = str(os.environ.get("ARIA_VISUAL_PARSER_SCRIPT") or "").strip()
+    if override:
+        candidates.append(override)
+    candidates.extend(
+        [
+            str(PUBLIC_REPO_ROOT / "aria" / "ui_parser.py"),
+            str(PUBLIC_REPO_ROOT / "vm_patches" / "ui_parser.py"),
+        ]
+    )
+    return candidates
+
+
+def _wrap_shell_command_with_session_sudo(command: str, env: Dict[str, str]) -> tuple[str, Dict[str, str]]:
+    """Use a session-only sudo password when one is explicitly provided in the environment."""
+    prepared_env = dict(env)
+    sudo_password = str(prepared_env.get(OPTIONAL_SUDO_PASSWORD_ENV) or "").strip()
+    if not sudo_password or "sudo" not in command or "-S" in command:
+        return command, prepared_env
+    prepared_command = re.sub(r"\bsudo\b(?!\s+-S\b)", "sudo -S -p ''", command)
+    wrapped_command = f"printf '%s\\n' \"${OPTIONAL_SUDO_PASSWORD_ENV}\" | {prepared_command}"
+    return wrapped_command, prepared_env
 # SYSTEM_PROMPT is imported from brain_config.py — single source of truth
 
 
@@ -405,10 +440,7 @@ class PerceptionRouter:
 
     def _extract_elements_local(self, screenshot_path: str) -> Dict[str, Dict[str, Any]]:
         elements_path = "/tmp/ariaos_screenshot_elements.json"
-        parser_candidates = [
-            "/home/jeremie/ariaos/aria/ui_parser.py",
-            "/home/jeremie/Ariaos/vm_patches/ui_parser.py",
-        ]
+        parser_candidates = _visual_parser_candidates()
         parser_path = next((p for p in parser_candidates if os.path.exists(p)), None)
         if not parser_path:
             return {}
@@ -8236,7 +8268,7 @@ bpy.ops.render.render(write_still=True)
                 f"MUST include: file paths created/modified, concrete action taken, and success/failure.\n"
                 f"Step {step}: Action='{action_type}'{action_detail} Thought='{thought}' Observation='{obs_short}'\n"
                 f"Format: 'Step {step}: <summary>'\n"
-                f"Example: 'Step 3: Created /home/jeremie/app/app.py (Flask+SQLite). Server started on port 5055.'"
+                f"Example: 'Step 3: Created ~/app/app.py (Flask+SQLite). Server started on port 5055.'"
             )
             try:
                 if not self.client:
@@ -8409,29 +8441,28 @@ bpy.ops.render.render(write_still=True)
                     + " >/tmp/ariaos_background.log 2>&1 < /dev/null &"
                 )
                 subprocess.run(
-                    detached_cmd,
-                    shell=True,
+                    ["bash", "-lc", detached_cmd],
                     capture_output=True,
                     text=True,
                     timeout=10,
-                    cwd="/home/jeremie",
+                    cwd=DEFAULT_COMMAND_CWD,
                     env=self.env
                 )
                 return f"[started background] {background_cmd}"
 
-            # Auto-add sudo password for privileged commands
-            if any(cmd in command for cmd in ["apt", "dpkg", "systemctl", "chmod", "chown", "usermod", "adduser"]):
-                if "sudo" in command and "-S" not in command:
-                    command = command.replace("sudo ", "echo 'Cisser,oussq2..' | sudo -S ")
+            # Commands run from the user's workspace/home by default. If the
+            # current runtime session has an explicit sudo password in env,
+            # wrap the command so sudo can read it from stdin without the
+            # password appearing in the repository or process arguments.
+            command, command_env = _wrap_shell_command_with_session_sudo(command, self.env)
 
             result = subprocess.run(
-                command,
-                shell=True,
+                ["bash", "-lc", command],
                 capture_output=True,
                 text=True,
                 timeout=COMMAND_TIMEOUT,
-                cwd="/home/jeremie",
-                env=self.env
+                cwd=DEFAULT_COMMAND_CWD,
+                env=command_env
             )
 
             output = ""
