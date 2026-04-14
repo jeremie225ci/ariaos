@@ -23,6 +23,41 @@ Main code areas inside that tree:
 - `/opt/aria-client/share/AriaApp/vm`
   VM guest integration and release tooling files.
 
+## What The Public VM Tree Already Exposes
+
+The public repository already ships the readable guest-side files for:
+
+- desktop launchers in `vm/guest/desktop`
+- session bootstrap scripts in `vm/guest/bin`
+- first-boot provisioning in `vm/guest/firstboot`
+- greeter assets and configuration in `vm/guest/greeter`
+- XFCE defaults in `vm/guest/xfce`
+
+That means the public repo already exposes a meaningful part of the VM surface,
+especially the shell launch path and the visible greeter layer.
+
+## What Is Still Partial In The Public VM Tree
+
+The deeper kernel/boot audit showed that the full boot-branding pipeline seen in
+the older legacy workspace is not yet mirrored one-to-one in the public repo.
+
+In practice, the public repo currently shows:
+
+- LightDM greeter configuration and assets
+
+But it does not yet show, in the same clear public path:
+
+- the full Plymouth theme installation flow
+- the GRUB branding script flow
+- the exact end-to-end boot branding installer used in the older workspace
+
+If contributors want the public repo to explain the VM from boot to desktop,
+that remaining boot-branding layer still needs to be published cleanly.
+
+For the full kernel and boot-branding audit, read:
+
+- `docs/KERNEL_AUDIT.md`
+
 ## Canonical Source Of Truth During Development
 
 When developing on the host machine, the main editable repository is:

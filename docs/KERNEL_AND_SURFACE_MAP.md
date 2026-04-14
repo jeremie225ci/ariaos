@@ -4,6 +4,11 @@ This document explains what `kernel` means in the public AriaOS repository,
 which old packaged names it replaced, and which visible UI surfaces now exist
 in readable source form.
 
+For the deeper audit of what kernel is actually used by the VM and whether the
+older `Ariaos/kernel` tree is a real Aria-specific fork, read:
+
+- `docs/KERNEL_AUDIT.md`
+
 ## What `kernel` Means In The Public Repo
 
 There are two different historical meanings of `kernel` in AriaOS:
