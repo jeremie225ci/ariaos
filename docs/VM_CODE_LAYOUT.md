@@ -96,6 +96,11 @@ One remaining readable module name that still contains the word `kernel` is:
 
 That file is not obfuscation. It is the local input backend module used by the runtime.
 
+If you need the full mapping between the old packaged names and the readable
+public names, read:
+
+- `docs/KERNEL_AND_SURFACE_MAP.md`
+
 ## If You Want To Modify AriaOS
 
 Change these places first:

@@ -775,6 +775,9 @@ class ActionExecutor:
         self._create_input = None
 
         try:
+            # The public repo exposes the real kernel-level input module
+            # directly. Older private builds sometimes hid this behind packaged
+            # aliases, but the runtime now imports the readable source module.
             from aria.kernel_input import create_input
             self._create_input = create_input
         except Exception as e:
@@ -787,6 +790,9 @@ class ActionExecutor:
         return self.backend is not None
 
     def _select_initial_backend(self):
+        # Probe both backends explicitly so the public VM behaves predictably:
+        # prefer the kernel path when it truly works, otherwise fall back to
+        # xdotool instead of pretending the kernel backend is healthy.
         order = [True, False] if self.prefer_kernel else [False, True]
         for prefer_kernel in order:
             backend = self._build_backend(prefer_kernel=prefer_kernel)
@@ -871,6 +877,9 @@ class ActionExecutor:
             target_x = max(4, start[0] - 12)
 
         try:
+            # A kernel backend is only accepted if it can move the real pointer
+            # inside the running VM. This avoids silent regressions where
+            # /dev/uinput exists but does not actually control the desktop.
             backend.move_to(target_x, target_y)
             time.sleep(0.08)
             moved = self._position_matches(target_x, target_y, tolerance=6)

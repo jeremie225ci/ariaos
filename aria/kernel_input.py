@@ -6,6 +6,12 @@ No xdotool, no X11 dependency — pure kernel-level input.
 
 Uses /dev/uinput to create a virtual input device and inject events.
 Requires: sudo usermod -aG input $USER && sudo chmod 666 /dev/uinput
+
+Important naming note:
+- In older private packaged builds, the word "kernel" could also refer to an
+  obfuscated copy of higher-level shell code.
+- In the public repository, this file is the real kernel-level module. It only
+  handles low-level input injection for mouse and keyboard events.
 """
 
 import struct
@@ -360,7 +366,12 @@ class KernelInput:
 # =========================================================================
 
 class XdotoolInput:
-    """Fallback input via xdotool if kernel access is not available."""
+    """Fallback input via xdotool if kernel access is not available.
+
+    The public runtime keeps this readable on purpose: when /dev/uinput is not
+    usable in a given VM, Aria should degrade to a known desktop-level backend
+    instead of hiding that switch behind packaging aliases.
+    """
 
     def __init__(self, display: str = ":0"):
         self.env = {**os.environ, "DISPLAY": display}
@@ -390,7 +401,13 @@ class XdotoolInput:
 
 
 def create_input(prefer_kernel: bool = True, **kwargs) -> 'KernelInput':
-    """Factory: create best available input method."""
+    """Factory: create the best available input method.
+
+    This is the public entry point used by the runtime. It prefers the kernel
+    backend when requested, but it never leaves the caller without a readable
+    fallback path: XdotoolInput is returned when /dev/uinput is missing or the
+    kernel backend cannot be created.
+    """
     if prefer_kernel and os.path.exists("/dev/uinput"):
         try:
             return KernelInput(**kwargs)

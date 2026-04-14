@@ -36,6 +36,10 @@ This document explains the active public architecture of AriaOS.
   Local input backend package used by the VM brain when probing kernel input or
   falling back to xdotool.
 
+- `docs/KERNEL_AND_SURFACE_MAP.md`
+  Reference document for the real kernel-level module, the old packaged name
+  mapping, and the readable UI surfaces exposed by the public repo.
+
 ## Prompt locations
 
 - `backend/prompts.py`

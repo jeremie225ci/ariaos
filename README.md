@@ -81,6 +81,7 @@ The public AriaOS flow is now **local-only**:
 If you want to understand what the public AriaOS brain can actually do, read:
 
 - `docs/BRAIN_ACTION_SURFACE.md` - planner contract, `computer` loop, desktop helpers, file/programming actions, and runtime guard rails
+- `docs/KERNEL_AND_SURFACE_MAP.md` - real kernel-level input module, old obfuscated name mapping, and the readable UI surfaces now exposed publicly
 - `docs/LOCAL_FIRST_ARCHITECTURE.md` - local runtime topology inside the VM
 - `docs/LONG_TERM_MEMORY.md` - readable memory file, local SQLite embedding index, recall, and write path
 - `docs/VOICE_MODE.md` - local voice websocket flow, transcription, TTS, and task control
@@ -114,6 +115,7 @@ ariaos/
 │   ├── INSTALL_VM.md            # VM setup flow
 │   ├── LOCAL_FIRST_ARCHITECTURE.md
 │   ├── BRAIN_ACTION_SURFACE.md  # Planner actions, computer-use loop, and local helper/tool surface
+│   ├── KERNEL_AND_SURFACE_MAP.md # Real kernel input module, old/private name mapping, and public UI surfaces
 │   ├── LONG_TERM_MEMORY.md      # Markdown memory file, semantic recall, and local vector index design
 │   ├── VOICE_MODE.md            # Local voice websocket flow and speech stack
 │   ├── FUTURE_TASKS.md          # Scheduler contract and current local scheduler status
