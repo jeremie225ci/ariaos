@@ -11,8 +11,10 @@ This shell is now the active UI direction for the public AriaOS repository. It p
 - Aria Home
 - Terminal Aria session history
 - image attachment support
+- local voice mode
 - local runtime connection handling
 - long-term memory integration
+- future-task brain contract
 
 ## Local-first assumptions
 

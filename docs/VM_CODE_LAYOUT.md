@@ -67,13 +67,15 @@ If you are trying to understand or edit the real VM code, start with `/opt/aria-
 
 ## What Is Still Generated Automatically
 
-Python may generate `__pycache__` directories while the VM is running the source tree. Those files are:
+The normal public launch paths now export `PYTHONDONTWRITEBYTECODE=1`, so the
+VM should not keep regenerating `__pycache__` directories during normal use.
+
+If `__pycache__` appears again, it usually means Python was run manually outside
+the standard Aria launchers. Those files are still:
 
 - generated locally
 - safe to delete
 - not the human-readable source of truth
-
-They do not mean the project is still hiding logic behind compiled-only modules. The readable `.py` files remain the actual source of truth.
 
 ## Legacy Naming Audit
 

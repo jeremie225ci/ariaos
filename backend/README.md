@@ -14,6 +14,18 @@ If you want to know where this backend lives inside the VM and which paths are
 real source code vs runtime state or deployment copies, read
 `docs/VM_CODE_LAYOUT.md`.
 
+If you want the deeper behavior of the local subsystems, also read:
+
+- `docs/LONG_TERM_MEMORY.md`
+  How the Markdown memory file and the local SQLite embedding index work.
+
+- `docs/VOICE_MODE.md`
+  How microphone input, STT, TTS, and voice task control stay local to the VM.
+
+- `docs/FUTURE_TASKS.md`
+  How the planner already models future tasks and what is still missing for a
+  complete local scheduler path.
+
 - `backend/prompts.py`
   Visible prompt definitions for the local backend, including the direct-answer
   prompt and the full VM-style agentic system prompt.
@@ -29,8 +41,8 @@ real source code vs runtime state or deployment copies, read
 
 - `backend/agentic_runtime.py`
   Visible copy of the VM agentic brain. It contains the multi-step planner,
-  computer-use loop, verification logic, scheduling actions, and local tool
-  execution behavior.
+  computer-use loop, verification logic, future-task scheduling contract, and
+  local tool execution behavior.
 
 - `backend/loopagentic.py`
   Thin bridge between the websocket server and the imported VM agentic runtime.

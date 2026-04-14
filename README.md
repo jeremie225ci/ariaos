@@ -6,8 +6,8 @@
   <img src="https://img.shields.io/badge/AI-OpenAI%20GPT--5.4-green?style=for-the-badge&logo=openai" alt="OpenAI">
 </p>
 
-An agent-focused operating system that runs inside a dedicated virtual machine, with Terminal Aria, local memory, local files,voice mode ,futur task management and local OpenAI key setup.
-The project was initially created to satisfy my curiosity. I’ve always wondered what would happen if I givee an AI agent a control of an operating system , gave it full privileges—including sudo—and let it interact with the computer’s user interface (clicking, scrolling, etc.). Well, to carry out this project, the only feasible and secure way was to place the agent in a virtual machine on a dedicated Linux system. So I went ahead and created linux distro based  an Debian fork dedicated to the agent, explicitly choosing GPT 5.4 because it’s relatively cost-effective and has the best computer usage scores in benchmark tests. The results are quite impressive and mind-blowing: the agent is capable of building entire complex apps in a matter of moments, can use my compromised apps, and operates on certain computers with highly sophisticated reasoning.
+An agent-focused operating system that runs inside a dedicated virtual machine, with Terminal Aria, local files, local OpenAI key setup, local voice mode, and visible long-term memory.
+The project started as an attempt to answer a simple question: what happens if an AI agent is given control of an operating system, including sudo, browser navigation, file access, and UI interaction, but is isolated inside its own VM? AriaOS is that answer. The VM is the product, the repo now exposes the readable local brain that runs inside it, and the public build keeps the main path local-first.
 
 ## 🚀 Features
 
@@ -16,6 +16,9 @@ The project was initially created to satisfy my curiosity. I’ve always wondere
 - 🔐 **OpenAI BYOK** - Users provide their own OpenAI API key on first launch
 - 🗂️ **Local Workspace** - Files, history, and memory stay inside the VM
 - 🧠 **Visible Local Brain** - The repo now exposes the local VM brain, its prompts, and its agentic loop
+- 🎙️ **Local Voice Mode** - Microphone input, transcription, TTS, and task start/stop all run inside the VM
+- 🧾 **Long-Term Memory** - Aria keeps a readable Markdown memory file plus a local semantic index for summary recall
+- ⏳ **Future-Task Brain Contract** - The planner already understands scheduling, cancellation, updates, and replacements for later tasks
 - 🖥️ **Integrated Desktop** - Browser, files, and shell run inside the same machine
 
 ## ⚡ Quick Start
@@ -65,6 +68,9 @@ If you want to understand what the public AriaOS brain can actually do, read:
 
 - `docs/BRAIN_ACTION_SURFACE.md` - planner contract, `computer` loop, desktop helpers, file/programming actions, and runtime guard rails
 - `docs/LOCAL_FIRST_ARCHITECTURE.md` - local runtime topology inside the VM
+- `docs/LONG_TERM_MEMORY.md` - readable memory file, local SQLite embedding index, recall, and write path
+- `docs/VOICE_MODE.md` - local voice websocket flow, transcription, TTS, and task control
+- `docs/FUTURE_TASKS.md` - current future-task planner contract and what is still missing for full local scheduling
 - `docs/VM_CODE_LAYOUT.md` - canonical VM code location, runtime state paths, caches, staging copies, and backups
 
 ## 🔧 Configuration
@@ -74,7 +80,9 @@ Main local files used by AriaOS:
 - `~/.config/ariaos/user_secrets.json` - local OpenAI key and secrets
 - `~/.config/ariaos/runtime_config.json` - runtime configuration
 - `~/.local/state/ariaos/onboarding_state.json` - onboarding state
-- `~/.ariaos/data/` - local history and data
+- `~/Desktop/Aria Memory.md` - readable long-term memory file
+- `~/.ariaos/data/aria_memory_index.db` - local SQLite embedding index for semantic memory recall
+- `~/.ariaos/data/` - local history and app data
 
 ## 🏗️ Project Structure
 
@@ -92,6 +100,9 @@ ariaos/
 │   ├── INSTALL_VM.md            # VM setup flow
 │   ├── LOCAL_FIRST_ARCHITECTURE.md
 │   ├── BRAIN_ACTION_SURFACE.md  # Planner actions, computer-use loop, and local helper/tool surface
+│   ├── LONG_TERM_MEMORY.md      # Markdown memory file, semantic recall, and local vector index design
+│   ├── VOICE_MODE.md            # Local voice websocket flow and speech stack
+│   ├── FUTURE_TASKS.md          # Scheduler contract and current local scheduler status
 │   └── VM_CODE_LAYOUT.md        # Canonical VM source location vs state/cache/staging directories
 └── assets/                      # Shared repository assets
 ```
@@ -103,6 +114,7 @@ AriaOS isolates the agent experience inside a dedicated VM:
 - 🧱 **Separate perimeter** - The agent works inside the VM, not directly on the host
 - 🔐 **Local key storage** - The OpenAI key stays stored locally
 - 🗃️ **Visible memory** - Preferences and useful summaries remain inspectable
+- 🎙️ **Local speech path** - Voice mode stays on the VM through the local websocket backends
 - 🧭 **Simplified flow** - Fewer remote dependencies in the main product path
 
 ## 📋 Requirements

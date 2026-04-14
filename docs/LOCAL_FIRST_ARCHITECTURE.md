@@ -45,6 +45,24 @@ This document explains the active public architecture of AriaOS.
 - `app/aria-shell-gtk/src/aria_shell_gtk/services/prompts.py`
   Prompt used by the shell to decide long-term memory updates.
 
+## Local intelligence layers
+
+- Long-term memory:
+  a readable Markdown memory file plus a local SQLite embedding index for
+  semantic summary recall.
+  See `docs/LONG_TERM_MEMORY.md`.
+
+- Voice mode:
+  a local websocket service that handles microphone audio, transcription, TTS,
+  and narrow task-control commands.
+  See `docs/VOICE_MODE.md`.
+
+- Future tasks:
+  the planner contract already understands scheduling and task mutations, but
+  the current public shell does not yet persist and execute those payloads as a
+  full local scheduler.
+  See `docs/FUTURE_TASKS.md`.
+
 ## Runtime flow
 
 1. The user opens AriaOS / Aria Home inside the VM.
@@ -71,7 +89,7 @@ This document explains the active public architecture of AriaOS.
   Backend pid files, logs, onboarding state, and runtime state.
 
 - `~/.ariaos/data/`
-  Chat history and local memory databases.
+  Chat history and local memory databases, including the SQLite memory index.
 
 ## Important note about the legacy VM
 
