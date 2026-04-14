@@ -45,6 +45,8 @@ def _post_json(
     runtime: dict[str, str],
     timeout: float = 90.0,
 ) -> dict[str, Any]:
+    # Keep the transport helpers in one place so the rest of the readable
+    # backend can focus on planner/runtime behavior instead of raw HTTP wiring.
     request = urllib.request.Request(
         endpoint,
         data=json.dumps(payload).encode("utf-8"),
@@ -271,6 +273,8 @@ def heuristic_title(text: str) -> str:
 
 
 def openai_chat(runtime: dict[str, str], messages: list[dict[str, Any]]) -> dict[str, Any]:
+    # This helper is used by the lightweight local chat/voice paths. The full
+    # multi-step planner lives in backend/agentic_runtime.py.
     ensure_runtime_key(runtime)
     endpoint = f"{str(runtime.get('base_url') or DEFAULT_BASE_URL).rstrip('/')}/chat/completions"
     payload = {

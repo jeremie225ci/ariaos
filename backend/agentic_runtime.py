@@ -2867,6 +2867,9 @@ class AgenticLoop:
         self.progress_log = []  # Reset progress log for new task
         self.goal_text = goal
         self.goal_lower = goal.lower()
+        # Decide whether this task can be answered immediately without entering
+        # the expensive multi-step planner loop. If this probe succeeds we stop
+        # early and never enter the agentic loop below.
         self._direct_response_mode = self._should_try_direct_response(bool(pending_image))
         self._last_goal_success = None
         self.target_focus_keywords = self._determine_target_focus_keywords()
@@ -2928,6 +2931,8 @@ class AgenticLoop:
 
         result = {"success": False, "reason": "Unknown", "steps": 0}
 
+        # Fast path: some goals can be answered directly from the current
+        # prompt/context without planning or computer use.
         try:
             direct_result = self._try_direct_response_once()
         except TaskBudgetExceeded as exc:
@@ -3034,7 +3039,7 @@ class AgenticLoop:
                 assistant_text = raw_content.strip()
                 if finish_reason and finish_reason != "stop":
                     print(f"[Brain] ⚠️ finish_reason={finish_reason} (not 'stop')", flush=True)
-                # 2. PARSE — Extract the action
+                # 2. PARSE — turn the planner JSON into one executable action.
                 action = self._parse_action(assistant_text)
                 if self._stop_requested():
                     yield "⛔ STOP: execution interrupted by user.\n"
@@ -3099,7 +3104,9 @@ class AgenticLoop:
                     })
                     continue
 
-                # 3. CHECK COMPLETION
+                # 3. CHECK COMPLETION — completion/scheduling/respond actions
+                # exit the loop here; only operational actions continue into the
+                # dispatch block below.
                 if action_type == "done":
                     screen_truth_reason = self._screen_truth_block_reason(
                         str(self.verifier.last_screen_text or ""),
@@ -4752,7 +4759,9 @@ class AgenticLoop:
                     observation = f"Unknown action type: {action_type}"
                     yield self._log_chunk(f" → Unknown: {action_type}\n")
 
-                # 5. OBSERVE — Feed result back to GPT
+                # 5. OBSERVE — compress the local result into a new user-side
+                # observation so the planner can choose the next action with the
+                # current state instead of replaying the whole task from zero.
                 self._trace("action_result", {
                     "action_type": action_type,
                     "observation": observation[:1200],
