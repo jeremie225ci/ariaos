@@ -13,6 +13,7 @@ The project started as an attempt to answer a simple question: what happens if a
 
 - 🤖 **Agent-focused OS** - A dedicated environment for running and operating an agent inside a VM
 - 💻 **Terminal Aria** - A work surface centered on agent-driven execution
+- 🖱️ **Computer Use** - The agent can see the screen, move the mouse, click, type, scroll, and verify desktop/browser results inside the VM
 - 🔐 **OpenAI BYOK** - Users provide their own OpenAI API key on first launch
 - 🗂️ **Local Workspace** - Files, history, and memory stay inside the VM
 - 🧠 **Visible Local Brain** - The repo now exposes the local VM brain, its prompts, and its agentic loop
@@ -34,6 +35,17 @@ PYTHONPATH=src python3 -m aria_shell_gtk
 ```
 
 For the actual product experience, the intended path remains the preconfigured AriaOS VM. This public repository contains the shell codebase, VM guest files, and VM release tooling.
+
+## 📦 VM Download
+
+- **Latest VM release page** - [Download the latest AriaOS VM](https://github.com/jeremie225ci/ariaos/releases/latest)
+- **Direct VM asset** - Replace this with your published asset URL once the filename is fixed, for example `https://github.com/jeremie225ci/ariaos/releases/latest/download/ariaos-latest.ova`
+- **External mirror** - If your exported VM is larger than GitHub's per-file release limit, keep the VM on your own server/CDN and put the direct download URL here
+
+## 🎥 Demo Video
+
+- **Walkthrough video** - Replace this with your demo URL, for example `https://www.youtube.com/watch?v=...`
+- **What to show** - Boot the VM, enter the OpenAI key, launch Terminal Aria, show computer use, voice mode, long-term memory, and a real task from start to finish
 
 ## 📖 Usage
 
