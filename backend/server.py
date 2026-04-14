@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
 import threading
 import time
 from dataclasses import dataclass
@@ -11,9 +12,6 @@ from typing import Any
 
 import websockets
 
-from backend.brain import (
-    chunk_text,
-)
 from backend.loopagentic import LocalTaskLoop
 
 
@@ -62,21 +60,58 @@ class AriaLocalServer:
     ) -> None:
         started_at = time.monotonic()
         try:
-            # The heavy OpenAI call stays off the websocket loop so the shell can
-            # continue handling stop requests and parallel client events.
-            result = await asyncio.to_thread(
-                self.loopagentic.complete,
-                session_id=session_id,
-                prompt=prompt,
-                image=image,
-                stop_requested=stop_event.is_set,
-                started_at=started_at,
-            )
-            if stop_event.is_set():
-                return
-            for chunk in chunk_text(result.response_text):
-                if stop_event.is_set():
+            # The brain runs on a worker thread, but we keep forwarding its live
+            # yields to the websocket so the terminal can show thoughts in real time.
+            stream_queue: queue.Queue[str] = queue.Queue()
+
+            def _on_stream(chunk: str) -> None:
+                stream_text = str(chunk or "")
+                if not stream_text or stop_event.is_set():
                     return
+                stream_queue.put(stream_text)
+
+            result_task = asyncio.create_task(
+                asyncio.to_thread(
+                    self.loopagentic.complete,
+                    session_id=session_id,
+                    prompt=prompt,
+                    image=image,
+                    stop_requested=stop_event.is_set,
+                    started_at=started_at,
+                    on_stream=_on_stream,
+                )
+            )
+
+            while not result_task.done():
+                sent_chunk = False
+                while True:
+                    try:
+                        chunk = stream_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    sent_chunk = True
+                    if stop_event.is_set():
+                        continue
+                    await self._send_json(
+                        websocket,
+                        {
+                            "type": L5,
+                            "requestId": request_id,
+                            "chunk": chunk,
+                        },
+                    )
+                if not sent_chunk:
+                    await asyncio.sleep(0.03)
+
+            result = await result_task
+
+            while True:
+                try:
+                    chunk = stream_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if stop_event.is_set():
+                    continue
                 await self._send_json(
                     websocket,
                     {

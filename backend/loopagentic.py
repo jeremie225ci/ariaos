@@ -62,6 +62,7 @@ class LocalTaskLoop:
         image: dict[str, Any] | None,
         stop_requested: Callable[[], bool],
         started_at: float,
+        on_stream: Callable[[str], None] | None = None,
     ) -> LocalTaskResult:
         runtime = load_runtime()
         if not runtime["api_key"]:
@@ -100,7 +101,12 @@ class LocalTaskLoop:
         try:
             while True:
                 try:
-                    next(generator)
+                    chunk = next(generator)
+                    if on_stream is not None:
+                        stream_text = str(chunk or "")
+                        if stream_text:
+                            # Forward the VM brain stream exactly as it is produced.
+                            on_stream(stream_text)
                 except StopIteration as exc:
                     result = dict(exc.value or {})
                     break
