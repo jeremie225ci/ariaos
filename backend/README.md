@@ -10,6 +10,10 @@ from the repository root. That document explains:
 - which file, desktop, system, and programming actions are really implemented
 - which browser/Terminal guard rails are enforced by the runtime
 
+If you want to know where this backend lives inside the VM and which paths are
+real source code vs runtime state or deployment copies, read
+`docs/VM_CODE_LAYOUT.md`.
+
 - `backend/prompts.py`
   Visible prompt definitions for the local backend, including the direct-answer
   prompt and the full VM-style agentic system prompt.

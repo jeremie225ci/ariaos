@@ -65,6 +65,7 @@ If you want to understand what the public AriaOS brain can actually do, read:
 
 - `docs/BRAIN_ACTION_SURFACE.md` - planner contract, `computer` loop, desktop helpers, file/programming actions, and runtime guard rails
 - `docs/LOCAL_FIRST_ARCHITECTURE.md` - local runtime topology inside the VM
+- `docs/VM_CODE_LAYOUT.md` - canonical VM code location, runtime state paths, caches, staging copies, and backups
 
 ## 🔧 Configuration
 
@@ -90,7 +91,8 @@ ariaos/
 ├── docs/
 │   ├── INSTALL_VM.md            # VM setup flow
 │   ├── LOCAL_FIRST_ARCHITECTURE.md
-│   └── BRAIN_ACTION_SURFACE.md  # Planner actions, computer-use loop, and local helper/tool surface
+│   ├── BRAIN_ACTION_SURFACE.md  # Planner actions, computer-use loop, and local helper/tool surface
+│   └── VM_CODE_LAYOUT.md        # Canonical VM source location vs state/cache/staging directories
 └── assets/                      # Shared repository assets
 ```
 
