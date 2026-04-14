@@ -85,6 +85,7 @@ If you want to understand what the public AriaOS brain can actually do, read:
 - `docs/KERNEL_AUDIT.md` - audit of the actual VM kernel, the older `Ariaos/kernel` tree, the `/dev/uinput` path, and the real boot-branding layer
 - `docs/LOCAL_FIRST_ARCHITECTURE.md` - local runtime topology inside the VM
 - `docs/LONG_TERM_MEMORY.md` - readable memory file, local SQLite embedding index, recall, and write path
+- `docs/VM_SLIMMING_AUDIT.md` - what makes the VM heavy today, what can be removed safely, and what must stay for the public release
 - `docs/VOICE_MODE.md` - local voice websocket flow, transcription, TTS, and task control
 - `docs/FUTURE_TASKS.md` - current future-task planner contract and what is still missing for full local scheduling
 - `docs/VM_CODE_LAYOUT.md` - canonical VM code location, runtime state paths, caches, staging copies, and backups
@@ -118,6 +119,7 @@ ariaos/
 │   ├── BRAIN_ACTION_SURFACE.md  # Planner actions, computer-use loop, and local helper/tool surface
 │   ├── KERNEL_AND_SURFACE_MAP.md # Real kernel input module, old/private name mapping, and public UI surfaces
 │   ├── KERNEL_AUDIT.md          # Audit of the real VM kernel, boot-branding path, and upstream kernel checkout
+│   ├── VM_SLIMMING_AUDIT.md     # What makes the VM heavy and which components can be removed safely
 │   ├── LONG_TERM_MEMORY.md      # Markdown memory file, semantic recall, and local vector index design
 │   ├── VOICE_MODE.md            # Local voice websocket flow and speech stack
 │   ├── FUTURE_TASKS.md          # Scheduler contract and current local scheduler status
