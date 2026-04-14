@@ -1482,6 +1482,10 @@ class AgenticLoop:
         self._openai_request_counter = 0
 
     def configure_scheduler_context(self, scheduled_tasks: Any | None) -> None:
+        # The planner only sees a trimmed, normalized view of scheduled tasks.
+        # That keeps prompt injection stable and makes task IDs/run times
+        # explicit before the model decides whether to cancel, update, or
+        # replace a future task.
         if not isinstance(scheduled_tasks, list):
             self.scheduled_tasks_context = []
             return
@@ -7881,6 +7885,9 @@ bpy.ops.render.render(write_still=True)
         return None
 
     def _normalize_schedule_action(self, action: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], str]:
+        # The model is allowed to ask for scheduling in natural language, but
+        # the runtime only accepts a fully normalized payload: concrete goal,
+        # exact future datetime, timezone, and optional supported recurrence.
         goal = str(
             action.get("goal")
             or action.get("prompt")
@@ -7942,6 +7949,9 @@ bpy.ops.render.render(write_still=True)
         return payload, ""
 
     def _normalize_scheduled_task_mutation(self, action: Dict[str, Any], *, op: str) -> tuple[Optional[Dict[str, Any]], str]:
+        # Mutations are validated centrally so cancel/update flows share one
+        # strict task-id and datetime normalization path before anything leaves
+        # the brain as a scheduled-task payload.
         task_id = str(
             action.get("task_id")
             or action.get("taskId")
@@ -8014,6 +8024,9 @@ bpy.ops.render.render(write_still=True)
         return payload, ""
 
     def _normalize_replace_scheduled_task_action(self, action: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], str]:
+        # "Replace" is modeled as a validated update of the target task with a
+        # new goal plus a new schedule. This keeps the planner contract simple
+        # while still forcing the replacement to pass the same schedule checks.
         task_id = str(
             action.get("task_id")
             or action.get("taskId")
