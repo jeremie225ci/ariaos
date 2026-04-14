@@ -39,8 +39,9 @@ For the actual product experience, the intended path remains the preconfigured A
 ## 📦 VM Download
 
 - **Latest VM release page** - [Download the latest AriaOS VM](https://github.com/jeremie225ci/ariaos/releases/latest)
-- **Direct VM asset** - Replace this with your published asset URL once the filename is fixed, for example `https://github.com/jeremie225ci/ariaos/releases/latest/download/ariaos-latest.ova`
-- **External mirror** - If your exported VM is larger than GitHub's per-file release limit, keep the VM on your own server/CDN and put the direct download URL here
+- **Direct OVA download** - [Download AriaOS (.ova)](https://getariaos.com/api/downloads/ova)
+- **Download page** - [AriaOS VM downloads](https://getariaos.com/download)
+- **External mirror** - If the VM grows beyond GitHub's per-file release limit, keep the canonical download on your own server/CDN and point the release page here
 
 ## 🎥 Demo Video
 
