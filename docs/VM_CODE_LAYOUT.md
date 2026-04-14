@@ -27,7 +27,8 @@ Main code areas inside that tree:
 
 When developing on the host machine, the main editable repository is:
 
-- `/home/jeremie/Ariaos-community`
+- your local AriaOS clone on the host
+  Example: `/path/to/ariaos`
 
 The deployment model is:
 
@@ -120,6 +121,6 @@ Avoid editing:
 If a user asks "where is the AriaOS VM code?", the short answer should be:
 
 - runtime source in the VM: `/opt/aria-client/share/AriaApp`
-- editable development repository on the host: `/home/jeremie/Ariaos-community`
+- editable development repository on the host: your local AriaOS clone path
 
 Everything else should be treated as state, cache, staging, or backup unless explicitly noted otherwise.

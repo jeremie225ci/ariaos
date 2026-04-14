@@ -12,8 +12,8 @@ Defaults:
   basefolder  $HOME/VMs
 
 Environment:
-  VM_USER               Guest Linux user to clean up. Default: jeremie
-  VM_PASS               Guest SSH/sudo password. Required.
+  VM_USER               Guest Linux user to clean up. Required.
+  VM_PASS               Guest SSH password. Required.
   VM_HOST               Guest SSH host. Default: 127.0.0.1
   VM_PORT               Guest SSH port for the cloned VM. Default: 2223
   VM_START_TYPE         VirtualBox start type. Default: headless
@@ -56,7 +56,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_VM="${1:-AriaOS}"
 RELEASE_VM="${2:-AriaOS-Release-Blank}"
 BASEFOLDER="${3:-$HOME/VMs}"
-VM_USER="${VM_USER:-jeremie}"
+VM_USER="${VM_USER:-}"
 VM_PASS="${VM_PASS:-}"
 VM_HOST="${VM_HOST:-127.0.0.1}"
 VM_PORT="${VM_PORT:-2223}"
@@ -70,6 +70,11 @@ REMOTE_CLEANUP_SCRIPT="/tmp/aria-golden-vm-cleanup.sh"
 REMOTE_FINALIZE_SCRIPT="/tmp/aria-finalize-release-blank.sh"
 START_TIMEOUT_SECONDS=240
 POWEROFF_TIMEOUT_SECONDS=180
+
+if [[ -z "$VM_USER" ]]; then
+  echo "VM_USER is required." >&2
+  exit 1
+fi
 
 if [[ -z "$VM_PASS" ]]; then
   echo "VM_PASS is required." >&2
@@ -92,7 +97,7 @@ vm_state() {
 wait_for_ssh() {
   local deadline=$((SECONDS + START_TIMEOUT_SECONDS))
   while (( SECONDS < deadline )); do
-    if sshpass -p "$VM_PASS" ssh -T \
+    if SSHPASS="$VM_PASS" sshpass -e ssh -T \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       -o ConnectTimeout=5 \
@@ -103,6 +108,13 @@ wait_for_ssh() {
     sleep 3
   done
   return 1
+}
+
+run_remote_sudo() {
+  local remote_command="$1"
+  # Feed the sudo password over stdin instead of interpolating it into the
+  # remote command line. This avoids leaking the secret in process listings.
+  printf '%s\n' "$VM_PASS" | "${SSH[@]}" "sudo -S -p '' bash -lc $(printf '%q' "$remote_command")"
 }
 
 wait_for_poweroff() {
@@ -116,8 +128,8 @@ wait_for_poweroff() {
   return 1
 }
 
-SSH=(sshpass -p "$VM_PASS" ssh -T -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -p "$VM_PORT" "$VM_USER@$VM_HOST")
-SCP=(sshpass -p "$VM_PASS" scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P "$VM_PORT")
+SSH=(env SSHPASS="$VM_PASS" sshpass -e ssh -T -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -p "$VM_PORT" "$VM_USER@$VM_HOST")
+SCP=(env SSHPASS="$VM_PASS" sshpass -e scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P "$VM_PORT")
 
 if ! vm_exists "$SOURCE_VM"; then
   echo "Source VM not found: $SOURCE_VM" >&2
@@ -176,9 +188,9 @@ EOF
 "${SCP[@]}" "$FINALIZE_LOCAL" "$VM_USER@$VM_HOST:$REMOTE_FINALIZE_SCRIPT"
 
 echo "Preparing blank release image inside the cloned VM"
-"${SSH[@]}" "printf '%s\n' '$VM_PASS' | sudo -S -p '' install -m 0755 '$REMOTE_CLEANUP_SCRIPT' '$REMOTE_CLEANUP_SCRIPT'"
-"${SSH[@]}" "printf '%s\n' '$VM_PASS' | sudo -S -p '' install -m 0755 '$REMOTE_FINALIZE_SCRIPT' '$REMOTE_FINALIZE_SCRIPT'"
-"${SSH[@]}" "printf '%s\n' '$VM_PASS' | sudo -S -p '' nohup '$REMOTE_FINALIZE_SCRIPT' >/tmp/aria-finalize-release-blank.log 2>&1 < /dev/null &"
+run_remote_sudo "install -m 0755 '$REMOTE_CLEANUP_SCRIPT' '$REMOTE_CLEANUP_SCRIPT'"
+run_remote_sudo "install -m 0755 '$REMOTE_FINALIZE_SCRIPT' '$REMOTE_FINALIZE_SCRIPT'"
+run_remote_sudo "nohup '$REMOTE_FINALIZE_SCRIPT' >/tmp/aria-finalize-release-blank.log 2>&1 < /dev/null &"
 
 echo "Waiting for the cloned VM to power off after cleanup"
 if ! wait_for_poweroff; then

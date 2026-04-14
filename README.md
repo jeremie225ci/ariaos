@@ -25,7 +25,7 @@ The project started as an attempt to answer a simple question: what happens if a
 
 ```bash
 # Clone the repository
-git clone git@github.com:jeremie225ci/ariaos.git
+git clone <your-repo-url> ariaos
 cd ariaos
 
 # Run the GTK shell locally
