@@ -46,8 +46,15 @@ For the actual product experience, the intended path remains the preconfigured A
 
 - **Latest VM release page** - [Download the latest AriaOS VM](https://github.com/jeremie225ci/ariaos/releases/latest)
 - **Direct OVA download** - [Download AriaOS (.ova)](https://getariaos.com/api/downloads/ova)
+- **Direct QCOW2 download** - [Download AriaOS for UTM (.qcow2)](https://getariaos.com/api/downloads/mac)
 - **Download page** - [AriaOS VM downloads](https://getariaos.com/download)
 - **External mirror** - If the VM grows beyond GitHub's per-file release limit, keep the canonical download on your own server/CDN and point the release page here
+
+### macOS / UTM
+
+- **Mac Intel** - Use UTM and import the published `.qcow2` image. This is the recommended macOS path.
+- **Mac Apple Silicon** - The current public VM is still `x86_64`. Use UTM with emulation. It can work, but boot and runtime will be slower than on Intel Macs.
+- **ARM-native status** - A native Apple Silicon / ARM build is not published yet.
 
 ## 📖 Usage
 
