@@ -54,10 +54,11 @@ For the actual product experience, the intended path remains the preconfigured A
 ### First Run
 
 1. Boot the AriaOS VM
-2. Open AriaOS / Aria Home
-3. Complete onboarding
-4. Enter an OpenAI API key
-5. Launch Terminal Aria
+2. Let the first boot create the local `aria` user automatically
+3. Wait for the VM to reboot into the desktop session
+4. Open AriaOS / Aria Home
+5. Enter an OpenAI API key
+6. Launch Terminal Aria
 
 ### Main Flow
 

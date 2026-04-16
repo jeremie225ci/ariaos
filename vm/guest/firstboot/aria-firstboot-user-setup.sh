@@ -10,6 +10,10 @@ RESERVED_USERNAMES="/usr/lib/user-setup/reserved-usernames"
 LIGHTDM_AUTOLOGIN_DIR="/etc/lightdm/lightdm.conf.d"
 LIGHTDM_AUTOLOGIN_FILE="${LIGHTDM_AUTOLOGIN_DIR}/50-aria-autologin.conf"
 DEFAULT_DESKTOP_SESSION="${ARIA_FIRSTBOOT_DESKTOP_SESSION:-xfce}"
+AUTO_CREATE_ENABLED="${ARIA_FIRSTBOOT_AUTO_CREATE:-1}"
+AUTO_CREATE_USERNAME="${ARIA_FIRSTBOOT_AUTO_USER:-aria}"
+AUTO_CREATE_FULL_NAME="${ARIA_FIRSTBOOT_AUTO_FULL_NAME:-AriaOS}"
+AUTO_CREATE_PASSWORD="${ARIA_FIRSTBOOT_AUTO_PASSWORD:-}"
 
 real_users() {
   awk -F: '$3 >= 1000 && $1 != "nobody" { print $1 }' /etc/passwd
@@ -59,7 +63,9 @@ create_user() {
   local password="$3"
 
   adduser --disabled-password --gecos "$fullname" "$username"
-  printf '%s:%s\n' "$username" "$password" | chpasswd
+  if [[ -n "$password" ]]; then
+    printf '%s:%s\n' "$username" "$password" | chpasswd
+  fi
   adduser "$username" sudo >/dev/null 2>&1 || true
 
   # AriaOS is designed to run autonomously inside its own VM, so the created
@@ -134,6 +140,26 @@ EOF
   chmod 0644 "/var/lib/AccountsService/users/${username}"
 }
 
+complete_firstboot_setup() {
+  local username="$1"
+
+  install_lightdm_autologin "$username"
+  install -d -m 0755 /var/lib/ariaos
+  rm -f "$MARKER_PATH"
+  touch "$COMPLETE_PATH"
+  systemctl set-default graphical.target >/dev/null 2>&1 || true
+  passwd -l root >/dev/null 2>&1 || true
+
+  if [[ "$SKIP_REBOOT" == "1" ]]; then
+    echo "AriaOS first boot completed for ${username}. Reboot skipped because ARIA_FIRSTBOOT_SKIP_REBOOT=1."
+    exit 0
+  fi
+
+  echo "AriaOS first boot completed for ${username}. Rebooting into the desktop session."
+  systemctl reboot
+  exit 0
+}
+
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "aria-firstboot-user-setup.sh must run as root." >&2
   exit 1
@@ -145,11 +171,6 @@ fi
 
 rm -f "$COMPLETE_PATH"
 
-if ! command -v whiptail >/dev/null 2>&1; then
-  echo "whiptail is required for AriaOS first-boot setup." >&2
-  exit 1
-fi
-
 if [[ "$TTY_DEVICE" =~ ^/dev/tty([0-9]+)$ ]] && command -v chvt >/dev/null 2>&1; then
   focus_setup_tty "${BASH_REMATCH[1]}" &
 fi
@@ -160,7 +181,36 @@ clear
 
 existing_users="$(real_users || true)"
 if [[ -n "$existing_users" && "$ALLOW_EXISTING_USERS" != "1" ]]; then
-  fail_dialog "AriaOS first-boot setup is armed, but the machine still has an existing Linux user: ${existing_users}. Clean the image before enabling first boot setup."
+  if [[ "$AUTO_CREATE_ENABLED" == "1" ]]; then
+    echo "AriaOS first boot is armed, but the machine still has an existing Linux user: ${existing_users}." >&2
+  else
+    fail_dialog "AriaOS first-boot setup is armed, but the machine still has an existing Linux user: ${existing_users}. Clean the image before enabling first boot setup."
+  fi
+  exit 1
+fi
+
+if [[ "$AUTO_CREATE_ENABLED" == "1" ]]; then
+  username="$(printf '%s' "$AUTO_CREATE_USERNAME" | tr '[:upper:]' '[:lower:]' | sed -e 's/^ *//' -e 's/ *$//')"
+  full_name="$(printf '%s' "$AUTO_CREATE_FULL_NAME" | sed -e 's/^ *//' -e 's/ *$//')"
+
+  if [[ -z "$full_name" ]]; then
+    echo "AriaOS first boot auto-create failed: full name cannot be empty." >&2
+    exit 1
+  fi
+
+  if ! is_valid_username "$username"; then
+    echo "AriaOS first boot auto-create failed: invalid or existing username '${username}'." >&2
+    exit 1
+  fi
+
+  echo "AriaOS first boot: creating local user '${username}' automatically."
+  create_user "$username" "$full_name" "$AUTO_CREATE_PASSWORD"
+  seed_user_branding "$username"
+  complete_firstboot_setup "$username"
+fi
+
+if ! command -v whiptail >/dev/null 2>&1; then
+  echo "whiptail is required for interactive AriaOS first-boot setup." >&2
   exit 1
 fi
 
@@ -201,19 +251,5 @@ while true; do
 
   create_user "$username" "$full_name" "$password_one"
   seed_user_branding "$username"
-  install_lightdm_autologin "$username"
-  install -d -m 0755 /var/lib/ariaos
-  rm -f "$MARKER_PATH"
-  touch "$COMPLETE_PATH"
-  systemctl set-default graphical.target >/dev/null 2>&1 || true
-  passwd -l root >/dev/null 2>&1 || true
-
-  if [[ "$SKIP_REBOOT" == "1" ]]; then
-    whiptail --title "AriaOS setup complete" --msgbox "Linux account '${username}' has been created. Reboot is skipped because ARIA_FIRSTBOOT_SKIP_REBOOT=1." 10 72
-    exit 0
-  fi
-
-  whiptail --title "AriaOS setup complete" --msgbox "Linux account '${username}' has been created. The system will reboot and open the desktop automatically." 10 72
-  systemctl reboot
-  exit 0
+  complete_firstboot_setup "$username"
 done

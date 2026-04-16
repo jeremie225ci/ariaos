@@ -12,9 +12,9 @@ This document describes the intended first-run flow for the new local-first Aria
 ## First run
 
 1. boot the AriaOS VM
-2. let the desktop session start normally
-3. open AriaOS / Aria Home
-4. finish onboarding
+2. let first boot create the local `aria` user automatically
+3. wait for the VM to reboot into the desktop session
+4. open AriaOS / Aria Home
 5. enter an OpenAI API key
 6. let the local runtime restart
 7. open Terminal Aria
