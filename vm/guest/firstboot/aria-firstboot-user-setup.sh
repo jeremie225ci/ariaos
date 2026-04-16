@@ -14,6 +14,7 @@ AUTO_CREATE_ENABLED="${ARIA_FIRSTBOOT_AUTO_CREATE:-1}"
 AUTO_CREATE_USERNAME="${ARIA_FIRSTBOOT_AUTO_USER:-aria}"
 AUTO_CREATE_FULL_NAME="${ARIA_FIRSTBOOT_AUTO_FULL_NAME:-AriaOS}"
 AUTO_CREATE_PASSWORD="${ARIA_FIRSTBOOT_AUTO_PASSWORD:-}"
+FIRSTBOOT_APP_DIR="${ARIA_FIRSTBOOT_APP_DIR:-/opt/aria-client/share/AriaApp}"
 
 real_users() {
   awk -F: '$3 >= 1000 && $1 != "nobody" { print $1 }' /etc/passwd
@@ -93,6 +94,7 @@ EOF
 seed_user_branding() {
   local username="$1"
   local user_home
+  local src
   user_home="$(getent passwd "$username" | cut -d: -f6)"
   [[ -n "$user_home" && -d "$user_home" ]] || return 0
 
@@ -124,10 +126,22 @@ seed_user_branding() {
       "$user_home/.local/bin/aria-user-session-bootstrap"
   fi
 
-  if [[ -f "/etc/skel/Desktop/Aria Memory.md" && ! -f "$user_home/Desktop/Aria Memory.md" ]]; then
-    install -o "$username" -g "$username" -m 0644 \
-      "/etc/skel/Desktop/Aria Memory.md" \
-      "$user_home/Desktop/Aria Memory.md"
+  for name in aria-home.desktop browser.desktop system-terminal.desktop aria-terminal.desktop files.desktop; do
+    src="/etc/skel/Desktop/${name}"
+    if [[ ! -f "$src" ]]; then
+      src="${FIRSTBOOT_APP_DIR}/vm/guest/desktop/${name}"
+    fi
+    if [[ -f "$src" ]]; then
+      install -o "$username" -g "$username" -m 0644 "$src" "$user_home/Desktop/${name}"
+    fi
+  done
+
+  src="/etc/skel/Desktop/Aria Memory.md"
+  if [[ ! -f "$src" ]]; then
+    src="${FIRSTBOOT_APP_DIR}/vm/guest/greeter/aria-memory-template.md"
+  fi
+  if [[ -f "$src" ]]; then
+    install -o "$username" -g "$username" -m 0644 "$src" "$user_home/Desktop/Aria Memory.md"
   fi
 
   install -d -m 0755 /var/lib/AccountsService/users
