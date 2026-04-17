@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Python-3.x-blue?style=for-the-badge&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/VM-Debian%2012%20%2F%20XFCE-red?style=for-the-badge&logo=debian" alt="Debian VM">
   <img src="https://img.shields.io/badge/AI-OpenAI%20GPT--5.4-green?style=for-the-badge&logo=openai" alt="OpenAI">
-  <img src="https://img.shields.io/badge/AI-Claude%20--5.4-green?style=for-the-badge&logo=claude" alt="Opus4.6">
+  <img src="https://img.shields.io/badge/AI-Claude%20opus--4.6-green?style=for-the-badge&logo=claude" alt="Opus4.6">
 </p>
 
 An agent-focused operating system that runs inside a dedicated virtual machine, with Terminal Aria, local files, local OpenAI key setup, local voice mode, and visible long-term memory.
