@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/AI-Claude%20opus--4.6-green?style=for-the-badge&logo=claude" alt="Opus4.6">
 </p>
 
-An agent-focused operating system that runs inside a dedicated virtual machine, with Terminal Aria, local files, local OpenAI key setup, local voice mode, and visible long-term memory.
+A dedicated VM where agents interact like humans , with Terminal Aria, local files, local OpenAI key setup, local voice mode, and visible long-term memory.
 The project started as an attempt to answer a simple question: what happens if an AI agent is given control of an operating system, including sudo, browser navigation, file access, and UI interaction, but is isolated inside its own VM? AriaOS is that answer. The VM is the product, the repo now exposes the readable local brain that runs inside it, and the public build keeps the main path local-first.
 
 <p align="center">
