@@ -1,4 +1,4 @@
-# AriaOS - AI Operating System for Agents Computer Use
+# AriaOS -  Agents Computer Use
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.x-blue?style=for-the-badge&logo=python" alt="Python">
