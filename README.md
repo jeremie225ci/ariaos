@@ -1,4 +1,4 @@
-# AriaOS -  Agents Computer Use
+# Open-source AI operating system for computer use agents on linux 
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.x-blue?style=for-the-badge&logo=python" alt="Python">
